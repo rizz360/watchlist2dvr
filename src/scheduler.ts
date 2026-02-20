@@ -1,108 +1,148 @@
 import Redis from "ioredis"
-import { loadConfig } from "./config.js"
+import { loadConfig, type Config } from "./config.js"
 import { TraktSource } from "./sources/trakt.js"
 import { ImdbCsvSource } from "./sources/imdb-csv.js"
-import type { WatchlistSource } from "./sources/index.js"
+import type { WatchlistSource, WatchlistItem } from "./sources/index.js"
 import { JellyfinLibraryChecker } from "./library/jellyfin.js"
 import { PlexLibraryChecker } from "./library/plex.js"
-import { NoopLibraryChecker } from "./library/index.js"
-import type { LibraryChecker } from "./library/index.js"
+import { NoopLibraryChecker, type LibraryChecker } from "./library/index.js"
 import { TmdbResolver } from "./resolvers/tmdb.js"
 import { TvheadendEpgProvider } from "./epg/tvheadend.js"
+import type { EpgProvider } from "./epg/index.js"
 import { TvheadendDvrAdapter } from "./dvr/tvheadend.js"
+import type { DvrAdapter } from "./dvr/index.js"
 import { MatchingEngine } from "./matching/engine.js"
 import { StateStore } from "./state/redis.js"
-import type { WatchlistItem } from "./sources/index.js"
+import { HistoryStore, type RunRecord } from "./state/history.js"
+import { startWebServer } from "./web/server.js"
 
-const CONFIG_PATH = process.env.CONFIG_PATH ?? "config.yaml"
+interface RunDeps {
+  config: Config
+  state: StateStore
+  history: HistoryStore
+  tmdb: TmdbResolver
+  sources: WatchlistSource[]
+  checkers: LibraryChecker[]
+  epg: EpgProvider
+  dvr: DvrAdapter
+  engine: MatchingEngine
+}
 
-async function run(): Promise<void> {
-  const config = loadConfig(CONFIG_PATH)
+function buildDeps(config: Config, redis: Redis): RunDeps {
+  return {
+    config,
+    state: new StateStore(redis),
+    history: new HistoryStore(redis),
+    tmdb: new TmdbResolver(config.tmdb.api_key, redis),
+    sources: config.sources.map((s) => {
+      if (s.type === "trakt") return new TraktSource(s.client_id, s.username)
+      return new ImdbCsvSource(s.path)
+    }),
+    checkers:
+      config.library.length > 0
+        ? config.library.map((l) => {
+            if (l.type === "jellyfin") return new JellyfinLibraryChecker(l.url, l.api_key)
+            return new PlexLibraryChecker(l.url, l.token)
+          })
+        : [new NoopLibraryChecker()],
+    epg: new TvheadendEpgProvider(config.dvr.url, config.dvr.username, config.dvr.password),
+    dvr: new TvheadendDvrAdapter(config.dvr.url, config.dvr.username, config.dvr.password),
+    engine: new MatchingEngine({
+      preferredLanguage: config.matching.preferred_language,
+      fallbackLanguages: config.matching.fallback_languages,
+      strictYearMatch: config.matching.strict_year_match,
+      yearTolerance: config.matching.year_tolerance,
+      fuzzyEnabled: config.matching.fuzzy_enabled,
+      fuzzyThreshold: config.matching.fuzzy_threshold,
+    }),
+  }
+}
 
-  const redis = new Redis(config.state.redis_url)
-  const state = new StateStore(redis)
-  const tmdb = new TmdbResolver(config.tmdb.api_key, redis)
+async function run(deps: RunDeps): Promise<void> {
+  const { config, state, history, tmdb, sources, checkers, epg, dvr, engine } = deps
+  const startedAt = new Date().toISOString()
+  const errors: string[] = []
 
-  // Build watchlist sources
-  const sources: WatchlistSource[] = config.sources.map((s) => {
-    if (s.type === "trakt") return new TraktSource(s.client_id, s.username)
-    return new ImdbCsvSource(s.path)
-  })
-
-  // Build library checkers
-  const checkers: LibraryChecker[] =
-    config.library.length > 0
-      ? config.library.map((l) => {
-          if (l.type === "jellyfin") return new JellyfinLibraryChecker(l.url, l.api_key)
-          return new PlexLibraryChecker(l.url, l.token)
-        })
-      : [new NoopLibraryChecker()]
-
-  const epg = new TvheadendEpgProvider(config.dvr.url, config.dvr.username, config.dvr.password)
-  const dvr = new TvheadendDvrAdapter(config.dvr.url, config.dvr.username, config.dvr.password)
-
-  const engine = new MatchingEngine({
-    preferredLanguage: config.matching.preferred_language,
-    fallbackLanguages: config.matching.fallback_languages,
-    strictYearMatch: config.matching.strict_year_match,
-    yearTolerance: config.matching.year_tolerance,
-    fuzzyEnabled: config.matching.fuzzy_enabled,
-    fuzzyThreshold: config.matching.fuzzy_threshold,
-  })
-
-  console.log(`[watchlist2dvr] Starting run at ${new Date().toISOString()}`)
+  console.log(`[watchlist2dvr] Starting run at ${startedAt}`)
 
   // 1. Fetch watchlist from all sources (deduplicate by imdbId)
   const allItems = new Map<string, WatchlistItem>()
   for (const source of sources) {
-    const items = await source.fetchWatchlist()
-    console.log(`  [source] Fetched ${items.length} items`)
-    for (const item of items) {
-      if (!allItems.has(item.imdbId)) allItems.set(item.imdbId, item)
+    try {
+      const items = await source.fetchWatchlist()
+      console.log(`  [source] Fetched ${items.length} items`)
+      for (const item of items) {
+        if (!allItems.has(item.imdbId)) allItems.set(item.imdbId, item)
+      }
+    } catch (err) {
+      const msg = `Source fetch failed: ${(err as Error).message}`
+      errors.push(msg)
+      console.error(`  [source] ${msg}`)
     }
   }
   console.log(`  [source] Total unique items: ${allItems.size}`)
+  const itemsTotal = allItems.size
 
-  // 2. Filter items already in library
+  // 2. Filter: already in library
   let remaining = [...allItems.values()]
+  let itemsInLibrary = 0
   for (const checker of checkers) {
     const filtered = await Promise.all(
       remaining.map(async (item) => ({
         item,
-        inLibrary: await checker.existsInLibrary(item.imdbId),
+        inLibrary: await checker.existsInLibrary(item.imdbId).catch(() => false),
       })),
     )
-    const inLibraryCount = filtered.filter((r) => r.inLibrary).length
-    if (inLibraryCount > 0) {
-      console.log(`  [library] Skipping ${inLibraryCount} item(s) already in library`)
+    const count = filtered.filter((r) => r.inLibrary).length
+    if (count > 0) {
+      console.log(`  [library] Skipping ${count} item(s) already in library`)
+      itemsInLibrary += count
     }
     remaining = filtered.filter((r) => !r.inLibrary).map((r) => r.item)
   }
 
-  // 3. Filter items already scheduled in Redis state
+  // 3. Filter: already scheduled in state
   const stateFiltered = await Promise.all(
     remaining.map(async (item) => ({ item, scheduled: await state.isScheduled(item.imdbId) })),
   )
-  const alreadyScheduled = stateFiltered.filter((r) => r.scheduled).length
-  if (alreadyScheduled > 0) {
-    console.log(`  [state] Skipping ${alreadyScheduled} item(s) already scheduled`)
+  const itemsAlreadyScheduled = stateFiltered.filter((r) => r.scheduled).length
+  if (itemsAlreadyScheduled > 0) {
+    console.log(`  [state] Skipping ${itemsAlreadyScheduled} item(s) already scheduled`)
   }
   remaining = stateFiltered.filter((r) => !r.scheduled).map((r) => r.item)
 
   if (remaining.length === 0) {
-    console.log("  [run] Nothing to process.")
-    await redis.quit()
+    console.log("  [run] Nothing new to process.")
+    await history.saveRun({
+      id: startedAt,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      itemsTotal,
+      itemsInLibrary,
+      itemsAlreadyScheduled,
+      matchesFound: 0,
+      scheduled: 0,
+      ambiguous: 0,
+      unmatched: 0,
+      errors,
+      matches: [],
+      ambiguousItems: [],
+      unmatchedItems: [],
+    })
     return
   }
 
   // 4. Resolve TMDB localized titles
   console.log(`  [tmdb] Resolving titles for ${remaining.length} item(s)...`)
   for (const item of remaining) {
-    const titles = await tmdb.resolveLocalizedTitles(item.imdbId)
-    item.localizedTitles = titles
+    try {
+      item.localizedTitles = await tmdb.resolveLocalizedTitles(item.imdbId)
+    } catch (err) {
+      errors.push(`TMDB lookup failed for ${item.imdbId}: ${(err as Error).message}`)
+    }
   }
 
-  // 5. Query EPG for each candidate title (preferred + fallback languages)
+  // 5. Query EPG
   const titlesToQuery = new Set<string>()
   const langs = [config.matching.preferred_language, ...config.matching.fallback_languages]
   for (const item of remaining) {
@@ -131,7 +171,7 @@ async function run(): Promise<void> {
   }
   console.log(`  [epg] Found ${epgResults.length} EPG event(s)`)
 
-  // 6. Run matching engine
+  // 6. Match
   const { matches, ambiguous, unmatched } = engine.match(remaining, epgResults)
 
   console.log(`\n  [match] Results:`)
@@ -145,63 +185,117 @@ async function run(): Promise<void> {
         ` @ ${m.event.startTime.toISOString()} [${m.confidence}, lang=${m.matchedLanguage}]`,
     )
   }
-
   for (const a of ambiguous) {
-    console.log(`    ? "${a.item.originalTitle}" — ambiguous: ${a.reason}`)
+    console.log(`    ? "${a.item.originalTitle}" — ${a.reason}`)
   }
-
   for (const u of unmatched) {
-    console.log(`    ✗ "${u.originalTitle}" (${u.imdbId}) — no EPG match found`)
+    console.log(`    ✗ "${u.originalTitle}" (${u.imdbId})`)
   }
 
-  // 7. Check DVR for already-scheduled entries, then schedule new ones
+  // 7. Schedule new recordings
   let dvrEntries: Awaited<ReturnType<typeof dvr.getScheduledEntries>> = []
   try {
     dvrEntries = await dvr.getScheduledEntries()
   } catch (err) {
-    console.warn("  [dvr] Could not fetch existing DVR entries:", (err as Error).message)
+    const msg = `Could not fetch DVR entries: ${(err as Error).message}`
+    errors.push(msg)
+    console.warn(`  [dvr] ${msg}`)
   }
 
   const scheduledEventIds = new Set(dvrEntries.map((e) => e.entryId))
-
   let scheduled = 0
+
   for (const m of matches) {
     if (scheduledEventIds.has(m.event.eventId)) {
       console.log(`  [dvr] Already in DVR queue: "${m.item.originalTitle}"`)
       await state.markScheduled(m.item.imdbId)
       continue
     }
-
     try {
       await dvr.scheduleEvent(m.event.eventId)
       await state.markScheduled(m.item.imdbId)
       console.log(`  [dvr] Scheduled: "${m.item.originalTitle}"`)
       scheduled++
     } catch (err) {
-      console.error(`  [dvr] Failed to schedule "${m.item.originalTitle}":`, (err as Error).message)
+      const msg = `Failed to schedule "${m.item.originalTitle}": ${(err as Error).message}`
+      errors.push(msg)
+      console.error(`  [dvr] ${msg}`)
     }
   }
 
+  const completedAt = new Date().toISOString()
   console.log(`\n[watchlist2dvr] Done. Scheduled ${scheduled} new recording(s).`)
 
-  await redis.quit()
+  // 8. Persist run record for history / web UI
+  const record: RunRecord = {
+    id: startedAt,
+    startedAt,
+    completedAt,
+    itemsTotal,
+    itemsInLibrary,
+    itemsAlreadyScheduled,
+    matchesFound: matches.length,
+    scheduled,
+    ambiguous: ambiguous.length,
+    unmatched: unmatched.length,
+    errors,
+    matches: matches.map((m) => ({
+      imdbId: m.item.imdbId,
+      originalTitle: m.item.originalTitle,
+      epgTitle: m.event.title,
+      channelName: m.event.channelName,
+      startTime: m.event.startTime.toISOString(),
+      confidence: m.confidence,
+      matchedLanguage: m.matchedLanguage,
+    })),
+    ambiguousItems: ambiguous.map((a) => ({
+      imdbId: a.item.imdbId,
+      originalTitle: a.item.originalTitle,
+      reason: a.reason,
+    })),
+    unmatchedItems: unmatched.map((u) => ({
+      imdbId: u.imdbId,
+      originalTitle: u.originalTitle,
+      year: u.year,
+    })),
+  }
+  await history.saveRun(record)
 }
 
 async function main(): Promise<void> {
   const config = loadConfig(process.env.CONFIG_PATH ?? "config.yaml")
 
+  const redis = new Redis(config.state.redis_url)
+  redis.on("error", (err: Error) => console.error("[redis]", err.message))
+
+  const deps = buildDeps(config, redis)
+
+  if (config.web.enabled) {
+    startWebServer({ dvr: deps.dvr, history: deps.history }, config.web.port)
+  }
+
+  const shutdown = async () => {
+    console.log("\n[watchlist2dvr] Shutting down...")
+    await redis.quit()
+    process.exit(0)
+  }
+  process.on("SIGTERM", () => void shutdown())
+  process.on("SIGINT", () => void shutdown())
+
   if (config.scheduler.mode === "oneshot") {
-    await run()
+    await run(deps)
+    await redis.quit()
     return
   }
 
-  // Polling mode
   const intervalMs = config.scheduler.interval_minutes * 60 * 1000
-  console.log(`[watchlist2dvr] Polling mode: running every ${config.scheduler.interval_minutes} minute(s)`)
+  console.log(
+    `[watchlist2dvr] Polling every ${config.scheduler.interval_minutes} minute(s). Web UI on :${config.web.port}`,
+  )
 
   while (true) {
     try {
-      await run()
+      await run(deps)
     } catch (err) {
       console.error("[watchlist2dvr] Run failed:", (err as Error).message)
     }
@@ -213,3 +307,4 @@ main().catch((err) => {
   console.error("[watchlist2dvr] Fatal error:", err)
   process.exit(1)
 })
+

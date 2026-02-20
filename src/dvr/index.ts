@@ -2,7 +2,9 @@ export interface DvrEntry {
   entryId: string
   title: string
   startTime: Date
+  endTime?: Date
   channelId: string
+  channelName?: string
   status: "scheduled" | "recording" | "completed" | "failed"
 }
 

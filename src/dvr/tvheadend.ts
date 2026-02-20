@@ -5,7 +5,9 @@ interface TvhDvrEntry {
   uuid: string
   disp_title: string
   start: number
+  stop: number
   channel: string
+  channelname?: string
   sched_status: string
 }
 
@@ -42,7 +44,9 @@ export class TvheadendDvrAdapter implements DvrAdapter {
       entryId: e.uuid,
       title: e.disp_title,
       startTime: new Date(e.start * 1000),
+      endTime: e.stop ? new Date(e.stop * 1000) : undefined,
       channelId: e.channel,
+      channelName: e.channelname,
       status: this.mapStatus(e.sched_status),
     }))
   }
