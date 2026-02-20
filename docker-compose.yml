@@ -1,6 +1,9 @@
 services:
   watchlist2dvr:
-    build: .
+    build:
+      context: .
+      pull: false  # don't re-pull base image if already cached locally
+    pull_policy: if_not_present
     restart: unless-stopped
     dns:
       - 100.100.100.100  # Tailscale MagicDNS — resolves .ts.net hostnames and peer names
@@ -18,6 +21,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    pull_policy: if_not_present
     restart: unless-stopped
     volumes:
       - redis_data:/data
