@@ -39,6 +39,7 @@ export class TraktSource implements WatchlistSource {
         localizedTitles: {},
         year: entry.movie.year,
         addedAt: new Date(entry.listed_at),
+        source: "watchlist" as const,
       }))
   }
 }

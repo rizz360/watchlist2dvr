@@ -86,7 +86,7 @@ async function run(deps: RunDeps): Promise<void> {
   // 2. Filter: already in library
   let remaining = [...allItems.values()]
   let itemsInLibrary = 0
-  const inLibraryItems: Array<{ imdbId: string; originalTitle: string }> = []
+  const inLibraryItems: Array<{ imdbId: string; originalTitle: string; source: "watchlist" | "rating"; userRating?: number }> = []
   for (const checker of checkers) {
     const filtered = await Promise.all(
       remaining.map(async (item) => ({
@@ -98,7 +98,12 @@ async function run(deps: RunDeps): Promise<void> {
     if (libItems.length > 0) {
       console.log(`  [library] Skipping ${libItems.length} item(s) already in library`)
       itemsInLibrary += libItems.length
-      inLibraryItems.push(...libItems.map((r) => ({ imdbId: r.item.imdbId, originalTitle: r.item.originalTitle })))
+      inLibraryItems.push(...libItems.map((r) => ({
+        imdbId: r.item.imdbId,
+        originalTitle: r.item.originalTitle,
+        source: r.item.source,
+        userRating: r.item.userRating,
+      })))
     }
     remaining = filtered.filter((r) => !r.inLibrary).map((r) => r.item)
   }
@@ -110,7 +115,12 @@ async function run(deps: RunDeps): Promise<void> {
   const itemsAlreadyScheduled = stateFiltered.filter((r) => r.scheduled).length
   const alreadyScheduledItems = stateFiltered
     .filter((r) => r.scheduled)
-    .map((r) => ({ imdbId: r.item.imdbId, originalTitle: r.item.originalTitle }))
+    .map((r) => ({
+      imdbId: r.item.imdbId,
+      originalTitle: r.item.originalTitle,
+      source: r.item.source,
+      userRating: r.item.userRating,
+    }))
   if (itemsAlreadyScheduled > 0) {
     console.log(`  [state] Skipping ${itemsAlreadyScheduled} item(s) already scheduled`)
   }
@@ -258,6 +268,9 @@ async function run(deps: RunDeps): Promise<void> {
     matches: matches.map((m) => ({
       imdbId: m.item.imdbId,
       originalTitle: m.item.originalTitle,
+      localizedTitle: m.item.localizedTitles[config.matching.preferred_language],
+      source: m.item.source,
+      userRating: m.item.userRating,
       epgTitle: m.event.title,
       channelName: m.event.channelName,
       startTime: m.event.startTime.toISOString(),
@@ -267,11 +280,17 @@ async function run(deps: RunDeps): Promise<void> {
     ambiguousItems: ambiguous.map((a) => ({
       imdbId: a.item.imdbId,
       originalTitle: a.item.originalTitle,
+      localizedTitle: a.item.localizedTitles[config.matching.preferred_language],
+      source: a.item.source,
+      userRating: a.item.userRating,
       reason: a.reason,
     })),
     unmatchedItems: unmatched.map((u) => ({
       imdbId: u.imdbId,
       originalTitle: u.originalTitle,
+      localizedTitle: u.localizedTitles[config.matching.preferred_language],
+      source: u.source,
+      userRating: u.userRating,
       year: u.year,
     })),
     inLibraryItems,

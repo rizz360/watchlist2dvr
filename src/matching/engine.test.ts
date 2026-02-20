@@ -19,6 +19,7 @@ function makeItem(overrides: Partial<WatchlistItem> = {}): WatchlistItem {
     localizedTitles: { de: "Stirb langsam", en: "Die Hard" },
     year: 1988,
     addedAt: new Date(),
+    source: "watchlist",
     ...overrides,
   }
 }

@@ -3,15 +3,16 @@ import { join } from "path"
 import { createInterface } from "readline"
 import type { WatchlistSource, WatchlistItem } from "./index.js"
 
-// IMDb CSV formats (as of 2024):
+// IMDb CSV export formats (as of 2025):
 //
-// Watchlist: Position,Const,Created,Modified,Description,Title,URL,Title Type,
-//            IMDb Rating,Runtime (mins),Year,Genres,Num Votes,Release Date,Directors
+// Both watchlist and ratings exports share the same column schema:
+//   Position,Const,Created,Modified,Description,Title,Original Title,URL,Title Type,
+//   IMDb Rating,Runtime (mins),Year,Genres,Num Votes,Release Date,Directors,Your Rating,Date Rated
 //
-// Ratings:   Const,Your Rating,Date Rated,Title,URL,Title Type,IMDb Rating,
-//            Runtime (mins),Year,Genres,Num Votes,Release Date,Directors
-//
-// Detection: presence of "Your Rating" column → ratings CSV
+// Source is detected per row: a filled "Your Rating" cell → "rating", otherwise → "watchlist".
+// "Title Type" is used to filter out non-movies (Video Game, tvSeries, etc.).
+// "Original Title" (native language) is used as originalTitle; "Title" (English display name)
+// is pre-seeded as localizedTitles["en"] when it differs.
 
 export class ImdbCsvSource implements WatchlistSource {
   constructor(
@@ -59,9 +60,10 @@ export class ImdbCsvSource implements WatchlistSource {
     const headers = this.parseCsvRow(lines[0]).map((h) => h.trim())
     const constIdx = headers.indexOf("Const")
     const titleIdx = headers.indexOf("Title")
+    const origTitleIdx = headers.indexOf("Original Title")
+    const titleTypeIdx = headers.indexOf("Title Type")
     const yearIdx = headers.indexOf("Year")
     const ratingIdx = headers.indexOf("Your Rating")
-    // Watchlist uses "Created", ratings use "Date Rated"
     const dateIdx =
       headers.indexOf("Created") !== -1 ? headers.indexOf("Created") : headers.indexOf("Date Rated")
 
@@ -70,7 +72,6 @@ export class ImdbCsvSource implements WatchlistSource {
       return []
     }
 
-    const isRatings = ratingIdx !== -1
     const items: WatchlistItem[] = []
 
     for (let i = 1; i < lines.length; i++) {
@@ -79,9 +80,28 @@ export class ImdbCsvSource implements WatchlistSource {
       const title = cols[titleIdx]?.trim()
       if (!imdbId || !title || !imdbId.startsWith("tt")) continue
 
-      if (isRatings) {
-        const rating = parseInt(cols[ratingIdx], 10)
-        if (isNaN(rating) || rating < this.minRating) continue
+      // Only record movies — skip Video Games, TV series, shorts, etc.
+      if (titleTypeIdx !== -1) {
+        const titleType = cols[titleTypeIdx]?.trim()
+        if (titleType && titleType !== "Movie" && titleType !== "TV Movie") continue
+      }
+
+      // Per-row source and rating detection
+      const ratingRaw = ratingIdx !== -1 ? cols[ratingIdx]?.trim() : ""
+      const userRatingParsed = ratingRaw ? parseInt(ratingRaw, 10) : NaN
+      const source: "watchlist" | "rating" = !isNaN(userRatingParsed) ? "rating" : "watchlist"
+      const userRating = source === "rating" ? userRatingParsed : undefined
+
+      // Apply min_rating filter only to rated rows
+      if (source === "rating" && userRating! < this.minRating) continue
+
+      // Use "Original Title" (native language) as canonical title
+      // Pre-seed English display title so matching engine can try both
+      const origTitle = origTitleIdx !== -1 ? cols[origTitleIdx]?.trim() : undefined
+      const originalTitle = origTitle || title
+      const localizedTitles: Record<string, string> = {}
+      if (origTitle && title && origTitle !== title) {
+        localizedTitles["en"] = title
       }
 
       const year = yearIdx !== -1 ? parseInt(cols[yearIdx], 10) || undefined : undefined
@@ -89,10 +109,12 @@ export class ImdbCsvSource implements WatchlistSource {
 
       items.push({
         imdbId,
-        originalTitle: title,
-        localizedTitles: {},
+        originalTitle,
+        localizedTitles,
         year,
         addedAt: isNaN(addedAt.getTime()) ? new Date() : addedAt,
+        source,
+        userRating,
       })
     }
 

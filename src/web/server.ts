@@ -57,18 +57,27 @@ export function startWebServer(deps: WebDeps, port: number): void {
           ...last.matches.map((m) => ({
             imdbId: m.imdbId,
             originalTitle: m.originalTitle,
+            localizedTitle: m.localizedTitle,
+            source: m.source,
+            userRating: m.userRating,
             status: "matched" as const,
             match: m,
           })),
           ...last.ambiguousItems.map((a) => ({
             imdbId: a.imdbId,
             originalTitle: a.originalTitle,
+            localizedTitle: a.localizedTitle,
+            source: a.source,
+            userRating: a.userRating,
             status: "ambiguous" as const,
             reason: a.reason,
           })),
           ...last.unmatchedItems.map((u) => ({
             imdbId: u.imdbId,
             originalTitle: u.originalTitle,
+            localizedTitle: u.localizedTitle,
+            source: u.source,
+            userRating: u.userRating,
             status: "unmatched" as const,
             year: u.year,
           })),
@@ -124,6 +133,7 @@ tr:hover td{background:#1a1a30}
 .badge-ambiguous{background:#2a2a1a;color:#fbbf24}
 .badge-library{background:#162a1e;color:#4ade80}
 .badge-noepg{background:#1e1e2a;color:#6b6b8a}
+.badge-rating{background:#2e1e0a;color:#fbbf24}
 .sec{font-size:.8rem;font-weight:600;color:#8888aa;text-transform:uppercase;letter-spacing:.08em;margin:1.5rem 0 .6rem}
 .empty{color:#4a4a6a;font-size:.88rem;padding:2.5rem 0;text-align:center}
 .run-card{background:#1a1a30;border:1px solid #2a2a4a;border-radius:6px;padding:.9rem 1.4rem;margin-bottom:.6rem}
@@ -208,9 +218,13 @@ function loadWatchlist() {
     items.sort(function(a,b){
       return (order[a.status]||99)-(order[b.status]||99) || a.originalTitle.localeCompare(b.originalTitle);
     });
-    var html = '<table><thead><tr><th>Title</th><th>Status</th><th>EPG / Channel</th><th>Airtime</th></tr></thead><tbody>';
+    var html = '<table><thead><tr><th>Title</th><th>Rating</th><th>Status</th><th>EPG / Channel</th><th>Airtime</th></tr></thead><tbody>';
     items.forEach(function(item) {
+      var displayTitle = (item.localizedTitle && item.localizedTitle !== item.originalTitle)
+        ? esc(item.localizedTitle) + '<br><small style="color:#6b6b8a">' + esc(item.originalTitle) + '</small>'
+        : esc(item.originalTitle);
       var imdbLink = ' <a href="https://www.imdb.com/title/'+esc(item.imdbId)+'/" target="_blank" rel="noopener">&#x2197;</a>';
+      var ratingHtml = item.userRating ? '<span class="badge badge-rating">&#9733; '+item.userRating+'</span>' : '&mdash;';
       var badge='', epg='&mdash;', airtime='&mdash;';
       if (item.status==='matched') {
         badge = '<span class="badge badge-'+esc(item.match.confidence)+'">'+esc(item.match.confidence)+'</span>'
@@ -228,7 +242,7 @@ function loadWatchlist() {
         badge = '<span class="badge badge-noepg">no EPG</span>';
         if (item.year) epg = String(item.year);
       }
-      html += '<tr><td>'+esc(item.originalTitle)+imdbLink+'</td><td>'+badge+'</td><td>'+epg+'</td><td>'+airtime+'</td></tr>';
+      html += '<tr><td>'+displayTitle+imdbLink+'</td><td>'+ratingHtml+'</td><td>'+badge+'</td><td>'+epg+'</td><td>'+airtime+'</td></tr>';
     });
     html += '</tbody></table>';
     document.getElementById('wl-content').innerHTML = html;

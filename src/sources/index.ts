@@ -4,6 +4,8 @@ export interface WatchlistItem {
   localizedTitles: Record<string, string>
   year?: number
   addedAt: Date
+  source: "watchlist" | "rating"
+  userRating?: number
 }
 
 export interface WatchlistSource {

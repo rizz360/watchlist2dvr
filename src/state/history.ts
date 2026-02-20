@@ -3,6 +3,9 @@ import type { Redis } from "ioredis"
 export interface RunMatch {
   imdbId: string
   originalTitle: string
+  localizedTitle?: string
+  source: "watchlist" | "rating"
+  userRating?: number
   epgTitle: string
   channelName: string
   startTime: string
@@ -13,12 +16,18 @@ export interface RunMatch {
 export interface RunAmbiguous {
   imdbId: string
   originalTitle: string
+  localizedTitle?: string
+  source: "watchlist" | "rating"
+  userRating?: number
   reason: string
 }
 
 export interface RunUnmatched {
   imdbId: string
   originalTitle: string
+  localizedTitle?: string
+  source: "watchlist" | "rating"
+  userRating?: number
   year?: number
 }
 
@@ -38,8 +47,8 @@ export interface RunRecord {
   matches: RunMatch[]
   ambiguousItems: RunAmbiguous[]
   unmatchedItems: RunUnmatched[]
-  inLibraryItems: Array<{ imdbId: string; originalTitle: string }>
-  alreadyScheduledItems: Array<{ imdbId: string; originalTitle: string }>
+  inLibraryItems: Array<{ imdbId: string; originalTitle: string; source: "watchlist" | "rating"; userRating?: number }>
+  alreadyScheduledItems: Array<{ imdbId: string; originalTitle: string; source: "watchlist" | "rating"; userRating?: number }>
 }
 
 const HISTORY_KEY = "history:runs"
