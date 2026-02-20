@@ -40,17 +40,15 @@ export class PlexDvrAdapter implements DvrAdapter {
     console.log(`  [dvr:plex] Subscribing ratingKey: ${ratingKey}`)
     await axios.post(
       `${this.baseUrl}/media/subscriptions`,
-      new URLSearchParams({
-        type: "1",
-        oneShot: "1",
-        ratingKey,
-      }),
+      null,
       {
-        params: this.authParams,
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/x-www-form-urlencoded",
+        params: {
+          ...this.authParams,
+          type: "1",
+          oneShot: "1",
+          ratingKey,
         },
+        headers: { Accept: "application/json" },
         timeout: 10_000,
       },
     )
