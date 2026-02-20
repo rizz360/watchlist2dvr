@@ -82,4 +82,16 @@ describe("MatchingEngine", () => {
     )
     expect(matches).toHaveLength(1)
   })
+
+  it("picks earliest airing when same movie appears multiple times in EPG", () => {
+    const events = [
+      makeEvent({ eventId: "e-later", title: "Stirb langsam", startTime: new Date("2026-03-10T20:00:00Z") }),
+      makeEvent({ eventId: "e-earliest", title: "Stirb langsam", startTime: new Date("2026-03-01T20:00:00Z") }),
+      makeEvent({ eventId: "e-middle", title: "Stirb langsam", startTime: new Date("2026-03-05T20:00:00Z") }),
+    ]
+    const { matches, ambiguous } = engine.match([makeItem()], events)
+    expect(matches).toHaveLength(1)
+    expect(matches[0].event.eventId).toBe("e-earliest")
+    expect(ambiguous).toHaveLength(0)
+  })
 })

@@ -83,21 +83,17 @@ export class MatchingEngine {
 
       const yearFiltered = this.filterByYear(item.year, exactHits)
 
-      if (yearFiltered.length === 1) {
+      if (yearFiltered.length >= 1) {
+        // Multiple airings of the same movie → pick the earliest broadcast
+        const best = yearFiltered.reduce((a, b) =>
+          a.event.startTime <= b.event.startTime ? a : b,
+        )
         return {
           item,
-          event: yearFiltered[0].event,
+          event: best.event,
           matchedTitle: title,
           matchedLanguage: lang,
           confidence: "exact",
-        }
-      }
-
-      if (yearFiltered.length > 1) {
-        return {
-          item,
-          candidates: yearFiltered.map((e) => e.event),
-          reason: `Multiple EPG events matched "${title}" after year filtering`,
         }
       }
     }

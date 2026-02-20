@@ -2,12 +2,23 @@ import axios from "axios"
 import type { Redis } from "ioredis"
 import type { LibraryChecker } from "./index.js"
 
+interface PlexSection {
+  key: string
+  type: string
+}
+
+interface PlexSectionsContainer {
+  MediaContainer: {
+    Directory?: PlexSection[]
+  }
+}
+
 interface PlexItem {
   guid?: string
   Guid?: Array<{ id: string }>
 }
 
-interface PlexMediaContainer {
+interface PlexLibraryContainer {
   MediaContainer: {
     totalSize?: number
     size?: number
@@ -17,7 +28,7 @@ interface PlexMediaContainer {
 
 const CACHE_KEY = "plex:library:all"
 const CACHE_TTL_SECONDS = 6 * 60 * 60 // 6 hours
-const PAGE_SIZE = 1000
+const PAGE_SIZE = 500
 
 export class PlexLibraryChecker implements LibraryChecker {
   private idsPromise: Promise<Set<string>> | null = null
@@ -33,6 +44,10 @@ export class PlexLibraryChecker implements LibraryChecker {
     return this.idsPromise
   }
 
+  private get authParams() {
+    return { "X-Plex-Token": this.token }
+  }
+
   private async fetchIds(): Promise<Set<string>> {
     const cached = await this.redis.get(CACHE_KEY)
     if (cached) {
@@ -41,34 +56,56 @@ export class PlexLibraryChecker implements LibraryChecker {
       return ids
     }
 
+    // 1. Find all movie library section keys
+    const sectionsResp = await axios.get<PlexSectionsContainer>(
+      `${this.baseUrl}/library/sections`,
+      { params: this.authParams, headers: { Accept: "application/json" }, timeout: 15_000 },
+    )
+    const movieSections = (sectionsResp.data.MediaContainer.Directory ?? []).filter(
+      (s) => s.type === "movie",
+    )
+
+    if (movieSections.length === 0) {
+      console.warn("  [library:plex] No movie library sections found")
+      return new Set()
+    }
+
+    // 2. Fetch all movies from each section with pagination
     const ids = new Set<string>()
-    let start = 0
-    for (;;) {
-      const response = await axios.get<PlexMediaContainer>(`${this.baseUrl}/library/all`, {
-        params: {
-          "X-Plex-Token": this.token,
-          type: 1, // 1 = Movie
-          "X-Plex-Container-Start": start,
-          "X-Plex-Container-Size": PAGE_SIZE,
-        },
-        headers: { Accept: "application/json" },
-        timeout: 30_000,
-      })
-      const mc = response.data.MediaContainer
-      const items = mc.Metadata ?? []
-      for (const item of items) {
-        // New Plex format: Guid array with imdb:// entries
-        for (const g of item.Guid ?? []) {
-          if (g.id?.startsWith("imdb://")) ids.add(g.id.slice(7))
+    for (const section of movieSections) {
+      let start = 0
+      for (;;) {
+        const resp = await axios.get<PlexLibraryContainer>(
+          `${this.baseUrl}/library/sections/${section.key}/all`,
+          {
+            params: {
+              ...this.authParams,
+              type: 1, // Movie
+              includeGuids: 1,
+              "X-Plex-Container-Start": start,
+              "X-Plex-Container-Size": PAGE_SIZE,
+            },
+            headers: { Accept: "application/json" },
+            timeout: 30_000,
+          },
+        )
+        const mc = resp.data.MediaContainer
+        const items = mc.Metadata ?? []
+        for (const item of items) {
+          // New Plex format: Guid[] with "imdb://ttXXX" entries
+          for (const g of item.Guid ?? []) {
+            if (g.id?.startsWith("imdb://")) ids.add(g.id.slice(7))
+          }
+          // Legacy Plex format: guid = "com.plexapp.agents.imdb://ttXXX?lang=..."
+          if (item.guid) {
+            const m = item.guid.match(/imdb:\/\/(tt\d+)/)
+            if (m) ids.add(m[1])
+          }
         }
-        // Legacy Plex format: single guid string "imdb://tt1234567/1/1"
-        if (item.guid?.startsWith("imdb://")) {
-          ids.add(item.guid.replace(/^imdb:\/\//, "").split("/")[0])
-        }
+        start += items.length
+        const total = mc.totalSize ?? mc.size ?? items.length
+        if (start >= total || items.length === 0) break
       }
-      start += items.length
-      const total = mc.totalSize ?? items.length
-      if (start >= total || items.length === 0) break
     }
 
     await this.redis.set(CACHE_KEY, JSON.stringify([...ids]), "EX", CACHE_TTL_SECONDS)
