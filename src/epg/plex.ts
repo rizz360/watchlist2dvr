@@ -46,7 +46,12 @@ export class PlexEpgProvider implements EpgProvider {
   }
 
   private getProviderId(): Promise<string | null> {
-    if (!this.providerIdPromise) this.providerIdPromise = this.fetchProviderId()
+    if (!this.providerIdPromise) {
+      this.providerIdPromise = this.fetchProviderId().catch((err) => {
+        this.providerIdPromise = null // reset so next call retries
+        throw err
+      })
+    }
     return this.providerIdPromise
   }
 
@@ -54,7 +59,7 @@ export class PlexEpgProvider implements EpgProvider {
     const resp = await axios.get<PlexProvidersContainer>(`${this.baseUrl}/media/providers`, {
       params: this.authParams,
       headers: { Accept: "application/json" },
-      timeout: 10_000,
+      timeout: 30_000,
     })
     const providers = resp.data.MediaContainer.MediaProvider ?? []
     // Find the first EPG provider (xmltv or gracenote) that has content features
