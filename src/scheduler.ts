@@ -8,8 +8,10 @@ import { PlexLibraryChecker } from "./library/plex.js"
 import { NoopLibraryChecker, type LibraryChecker } from "./library/index.js"
 import { TmdbResolver } from "./resolvers/tmdb.js"
 import { TvheadendEpgProvider } from "./epg/tvheadend.js"
+import { PlexEpgProvider } from "./epg/plex.js"
 import type { EpgProvider } from "./epg/index.js"
 import { TvheadendDvrAdapter } from "./dvr/tvheadend.js"
+import { PlexDvrAdapter } from "./dvr/plex.js"
 import type { DvrAdapter } from "./dvr/index.js"
 import { MatchingEngine } from "./matching/engine.js"
 import { StateStore } from "./state/redis.js"
@@ -45,8 +47,14 @@ function buildDeps(config: Config, redis: Redis): RunDeps {
             return new PlexLibraryChecker(l.url, l.token, redis)
           })
         : [new NoopLibraryChecker()],
-    epg: new TvheadendEpgProvider(config.dvr.url, config.dvr.username, config.dvr.password),
-    dvr: new TvheadendDvrAdapter(config.dvr.url, config.dvr.username, config.dvr.password),
+    epg:
+      config.dvr.type === "plex"
+        ? new PlexEpgProvider(config.dvr.url, config.dvr.token)
+        : new TvheadendEpgProvider(config.dvr.url, config.dvr.username, config.dvr.password),
+    dvr:
+      config.dvr.type === "plex"
+        ? new PlexDvrAdapter(config.dvr.url, config.dvr.token)
+        : new TvheadendDvrAdapter(config.dvr.url, config.dvr.username, config.dvr.password),
     engine: new MatchingEngine({
       preferredLanguage: config.matching.preferred_language,
       fallbackLanguages: config.matching.fallback_languages,

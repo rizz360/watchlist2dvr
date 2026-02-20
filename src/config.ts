@@ -38,6 +38,14 @@ const TvheadendDvrSchema = z.object({
   password: z.string().default(""),
 })
 
+const PlexDvrSchema = z.object({
+  type: z.literal("plex"),
+  url: z.string().url().transform((u) => u.replace(/\/+$/, "")),
+  token: z.string().min(1),
+})
+
+const DvrSchema = z.discriminatedUnion("type", [TvheadendDvrSchema, PlexDvrSchema])
+
 const ConfigSchema = z.object({
   sources: z.array(SourceSchema).min(1),
 
@@ -58,7 +66,7 @@ const ConfigSchema = z.object({
     })
     .default({}),
 
-  dvr: TvheadendDvrSchema,
+  dvr: DvrSchema,
 
   state: z
     .object({
