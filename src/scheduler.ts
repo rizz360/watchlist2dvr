@@ -1,4 +1,7 @@
 import Redis from "ioredis"
+import axios from "axios"
+import https from "https"
+import http from "http"
 import { loadConfig, type Config } from "./config.js"
 import { TraktSource } from "./sources/trakt.js"
 import { ImdbCsvSource } from "./sources/imdb-csv.js"
@@ -344,6 +347,79 @@ async function run(deps: RunDeps): Promise<void> {
   await history.saveRun(record)
 }
 
+async function checkConnectivity(config: Config): Promise<void> {
+  console.log("[watchlist2dvr] Checking connectivity...")
+  const checks: Array<{ name: string; fn: () => Promise<void> }> = []
+
+  // TMDB
+  checks.push({
+    name: "TMDB API (api.themoviedb.org)",
+    fn: async () => {
+      await axios.get("https://api.themoviedb.org/3/configuration", {
+        params: { api_key: config.tmdb.api_key },
+        httpsAgent: new https.Agent({ family: 4 }),
+        timeout: 8_000,
+      })
+    },
+  })
+
+  // Plex/library
+  for (const lib of config.library) {
+    if (lib.type === "plex") {
+      checks.push({
+        name: `Plex library (${lib.url})`,
+        fn: async () => {
+          await axios.get(`${lib.url}/identity`, {
+            params: { "X-Plex-Token": lib.token },
+            httpAgent: new http.Agent({ family: 4 }),
+            timeout: 8_000,
+          })
+        },
+      })
+    }
+  }
+
+  // DVR
+  if (config.dvr.type === "plex") {
+    const plexDvr = config.dvr
+    checks.push({
+      name: `Plex DVR (${plexDvr.url})`,
+      fn: async () => {
+        await axios.get(`${plexDvr.url}/identity`, {
+          params: { "X-Plex-Token": plexDvr.token },
+          httpAgent: new http.Agent({ family: 4 }),
+          timeout: 8_000,
+        })
+      },
+    })
+  } else if (config.dvr.type === "tvheadend") {
+    const tvhDvr = config.dvr
+    checks.push({
+      name: `TVHeadend DVR (${tvhDvr.url})`,
+      fn: async () => {
+        await axios.get(`${tvhDvr.url}/api/serverinfo`, { timeout: 8_000 })
+      },
+    })
+  }
+
+  let allOk = true
+  await Promise.all(checks.map(async (check) => {
+    try {
+      await check.fn()
+      console.log(`  [connectivity] ✓ ${check.name}`)
+    } catch (err) {
+      console.error(`  [connectivity] ✗ ${check.name}: ${(err as Error).message}`)
+      allOk = false
+    }
+  }))
+
+  if (!allOk) {
+    console.error("[watchlist2dvr] One or more connectivity checks failed — see above. Will attempt run anyway.")
+  } else {
+    console.log("[watchlist2dvr] All connectivity checks passed.")
+  }
+}
+
 async function main(): Promise<void> {
   const config = loadConfig(process.env.CONFIG_PATH ?? "config.yaml")
 
@@ -353,6 +429,8 @@ async function main(): Promise<void> {
   // Clear any stale lock left by a previously killed container.
   // Safe because Docker Compose ensures only one app container runs at a time.
   await redis.del("lock:scheduler:run")
+
+  await checkConnectivity(config)
 
   const deps = buildDeps(config, redis)
 
