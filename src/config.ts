@@ -12,7 +12,7 @@ const TraktSourceSchema = z.object({
 const ImdbCsvSourceSchema = z.object({
   type: z.literal("imdb_csv"),
   path: z.string().min(1),
-  min_rating: z.number().int().min(1).max(10).default(1),
+  min_rating: z.number().int().min(0).max(10).default(0),
 })
 
 const SourceSchema = z.discriminatedUnion("type", [TraktSourceSchema, ImdbCsvSourceSchema])
