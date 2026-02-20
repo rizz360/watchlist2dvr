@@ -265,12 +265,16 @@ async function run(deps: RunDeps): Promise<void> {
       continue
     }
     try {
+      console.log(`  [dvr] Scheduling: "${m.item.originalTitle}" (eventId=${m.event.eventId}, epgTitle="${m.event.title}")`)
       await dvr.scheduleEvent(m.event.eventId)
       await state.markScheduled(m.item.imdbId)
       console.log(`  [dvr] Scheduled: "${m.item.originalTitle}"`)
       scheduled++
     } catch (err) {
-      const msg = `Failed to schedule "${m.item.originalTitle}": ${(err as Error).message}`
+      const axiosBody =
+        (err as { response?: { data?: unknown } }).response?.data
+      const detail = axiosBody ? ` — ${JSON.stringify(axiosBody)}` : ""
+      const msg = `Failed to schedule "${m.item.originalTitle}": ${(err as Error).message}${detail}`
       errors.push(msg)
       console.error(`  [dvr] ${msg}`)
     }
