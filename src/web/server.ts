@@ -189,7 +189,7 @@ a:hover{text-decoration:underline}
   <button onclick="showTab('upcoming',this)">Upcoming</button>
   <button onclick="showTab('history',this)">History</button>
   <button onclick="showTab('debug',this)">Debug</button>
-<main>
+</nav>
   <div id="tab-watchlist" class="tab active">
     <div class="stat-row" id="stat-row"></div>
     <div id="wl-content"><p class="empty">Loading&hellip;</p></div>
