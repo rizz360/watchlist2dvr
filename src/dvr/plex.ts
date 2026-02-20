@@ -30,16 +30,26 @@ export class PlexDvrAdapter implements DvrAdapter {
   }
 
   async scheduleEvent(eventId: string): Promise<void> {
-    // eventId is the ratingKey from PlexEpgProvider
-    await axios.post(`${this.baseUrl}/media/subscriptions`, null, {
-      params: {
-        ...this.authParams,
-        type: 1, // Movie
-        metadataSubscriptionId: eventId,
+    // The EPG ratingKey comes back URL-encoded from Plex (e.g. "tv%2Eplex%2Exmltv%3A%2F%2F...")
+    // Decode it once to get the canonical form Plex expects in the subscription body.
+    const ratingKey = decodeURIComponent(eventId)
+    console.log(`  [dvr:plex] Subscribing ratingKey: ${ratingKey}`)
+    await axios.post(
+      `${this.baseUrl}/media/subscriptions`,
+      new URLSearchParams({
+        type: "1",
+        oneShot: "1",
+        ratingKey,
+      }),
+      {
+        params: this.authParams,
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        timeout: 10_000,
       },
-      headers: { Accept: "application/json" },
-      timeout: 10_000,
-    })
+    )
   }
 
   async getScheduledEntries(): Promise<DvrEntry[]> {
