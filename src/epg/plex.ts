@@ -39,6 +39,7 @@ export class PlexEpgProvider implements EpgProvider {
   constructor(
     private readonly baseUrl: string,
     private readonly token: string,
+    private readonly staticProviderId?: string,
   ) {}
 
   private get authParams() {
@@ -46,6 +47,7 @@ export class PlexEpgProvider implements EpgProvider {
   }
 
   private getProviderId(): Promise<string | null> {
+    if (this.staticProviderId) return Promise.resolve(this.staticProviderId)
     if (!this.providerIdPromise) {
       this.providerIdPromise = this.fetchProviderId().catch((err) => {
         this.providerIdPromise = null // reset so next call retries

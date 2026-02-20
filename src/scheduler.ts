@@ -49,7 +49,7 @@ function buildDeps(config: Config, redis: Redis): RunDeps {
         : [new NoopLibraryChecker()],
     epg:
       config.dvr.type === "plex"
-        ? new PlexEpgProvider(config.dvr.url, config.dvr.token)
+        ? new PlexEpgProvider(config.dvr.url, config.dvr.token, config.dvr.epg_provider)
         : new TvheadendEpgProvider(config.dvr.url, config.dvr.username, config.dvr.password),
     dvr:
       config.dvr.type === "plex"

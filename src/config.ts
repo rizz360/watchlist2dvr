@@ -44,6 +44,8 @@ const PlexDvrSchema = z.object({
   token: z.string().min(1),
   /** Library section ID for DVR Movies. Defaults to 6 if not specified. */
   library_section_id: z.number().int().positive().optional(),
+  /** EPG provider identifier — skips auto-discovery. e.g. tv.plex.providers.epg.xmltv:9 */
+  epg_provider: z.string().optional(),
 })
 
 const DvrSchema = z.discriminatedUnion("type", [TvheadendDvrSchema, PlexDvrSchema])
