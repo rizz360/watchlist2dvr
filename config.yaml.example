@@ -43,6 +43,7 @@ state:
 scheduler:
   mode: polling          # polling | oneshot
   interval_minutes: 60
+  dry_run: false         # true = log matches but do not write to DVR
 
 web:
   enabled: true

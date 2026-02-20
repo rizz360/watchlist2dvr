@@ -117,6 +117,7 @@ async function run(deps: RunDeps): Promise<void> {
       id: startedAt,
       startedAt,
       completedAt: new Date().toISOString(),
+      dryRun: config.scheduler.dry_run,
       itemsTotal,
       itemsInLibrary,
       itemsAlreadyScheduled,
@@ -193,19 +194,26 @@ async function run(deps: RunDeps): Promise<void> {
   }
 
   // 7. Schedule new recordings
+  const dryRun = config.scheduler.dry_run
   let dvrEntries: Awaited<ReturnType<typeof dvr.getScheduledEntries>> = []
-  try {
-    dvrEntries = await dvr.getScheduledEntries()
-  } catch (err) {
-    const msg = `Could not fetch DVR entries: ${(err as Error).message}`
-    errors.push(msg)
-    console.warn(`  [dvr] ${msg}`)
+  if (!dryRun) {
+    try {
+      dvrEntries = await dvr.getScheduledEntries()
+    } catch (err) {
+      const msg = `Could not fetch DVR entries: ${(err as Error).message}`
+      errors.push(msg)
+      console.warn(`  [dvr] ${msg}`)
+    }
   }
 
   const scheduledEventIds = new Set(dvrEntries.map((e) => e.entryId))
   let scheduled = 0
 
   for (const m of matches) {
+    if (dryRun) {
+      console.log(`  [dvr] DRY RUN — would schedule: "${m.item.originalTitle}"`)
+      continue
+    }
     if (scheduledEventIds.has(m.event.eventId)) {
       console.log(`  [dvr] Already in DVR queue: "${m.item.originalTitle}"`)
       await state.markScheduled(m.item.imdbId)
@@ -224,13 +232,14 @@ async function run(deps: RunDeps): Promise<void> {
   }
 
   const completedAt = new Date().toISOString()
-  console.log(`\n[watchlist2dvr] Done. Scheduled ${scheduled} new recording(s).`)
+  console.log(`\n[watchlist2dvr] Done.${dryRun ? " (DRY RUN)" : ""} Scheduled ${scheduled} new recording(s).`)
 
   // 8. Persist run record for history / web UI
   const record: RunRecord = {
     id: startedAt,
     startedAt,
     completedAt,
+    dryRun,
     itemsTotal,
     itemsInLibrary,
     itemsAlreadyScheduled,

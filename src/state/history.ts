@@ -26,6 +26,7 @@ export interface RunRecord {
   id: string
   startedAt: string
   completedAt: string
+  dryRun: boolean
   itemsTotal: number
   itemsInLibrary: number
   itemsAlreadyScheduled: number

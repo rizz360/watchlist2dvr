@@ -102,7 +102,7 @@ tr:hover td{background:#1a1a30}
 .badge-exact,.badge-scheduled{background:#1e3a5f;color:#60a5fa}
 .badge-recording{background:#14532d;color:#4ade80}
 .badge-fuzzy{background:#713f12;color:#fbbf24}
-.badge-failed{background:#3b1414;color:#f87171}
+.badge-dryrun{background:#1a1a3a;color:#818cf8;border:1px solid #4a4a8a}
 .badge-ambiguous{background:#2a2a1a;color:#fbbf24}
 .sec{font-size:.8rem;font-weight:600;color:#8888aa;text-transform:uppercase;letter-spacing:.08em;margin:1.5rem 0 .6rem}
 .empty{color:#4a4a6a;font-size:.88rem;padding:2.5rem 0;text-align:center}
@@ -241,7 +241,7 @@ function loadHistory() {
     var html = '';
     runs.forEach(function(run) {
       html += '<div class="run-card">';
-      html += '<div class="run-time">'+fmtDate(run.startedAt)+'</div>';
+      html += '<div class="run-time">'+fmtDate(run.startedAt)+(run.dryRun ? ' <span class="badge badge-dryrun">dry run</span>' : '')+'</div>';
       html += '<div class="run-stats">';
       [['Total',run.itemsTotal],['Matched',run.matchesFound],['Scheduled',run.scheduled],
        ['Ambiguous',run.ambiguous],['Unmatched',run.unmatched],['In library',run.itemsInLibrary]

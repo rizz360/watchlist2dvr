@@ -24,7 +24,7 @@ const LibraryJellyfinSchema = z.object({
 
 const LibraryPlexSchema = z.object({
   type: z.literal("plex"),
-  url: z.string().url(),
+  url: z.string().url().transform((u) => u.replace(/\/+$/, "")),
   token: z.string().min(1),
 })
 
@@ -69,6 +69,7 @@ const ConfigSchema = z.object({
     .object({
       mode: z.enum(["polling", "oneshot"]).default("polling"),
       interval_minutes: z.number().int().min(1).default(60),
+      dry_run: z.boolean().default(false),
     })
     .default({}),
 
