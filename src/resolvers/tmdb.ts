@@ -1,8 +1,10 @@
 import axios from "axios"
+import https from "https"
 import type { Redis } from "ioredis"
 
 const TMDB_BASE = "https://api.themoviedb.org/3"
 const CACHE_TTL_SECONDS = 7 * 24 * 60 * 60 // 7 days
+const ipv4Agent = new https.Agent({ family: 4 })
 
 interface TmdbFindResult {
   movie_results: Array<{ id: number }>
@@ -37,7 +39,7 @@ export class TmdbResolver {
 
     const response = await axios.get<{ translations: TmdbTranslation[] }>(
       `${TMDB_BASE}/movie/${tmdbId}/translations`,
-      { params: { api_key: this.apiKey }, timeout: 10_000 },
+      { params: { api_key: this.apiKey }, httpsAgent: ipv4Agent, timeout: 10_000 },
     )
 
     const titles: Record<string, string> = {}
@@ -60,6 +62,7 @@ export class TmdbResolver {
 
     const response = await axios.get<TmdbFindResult>(`${TMDB_BASE}/find/${imdbId}`, {
       params: { api_key: this.apiKey, external_source: "imdb_id" },
+      httpsAgent: ipv4Agent,
       timeout: 10_000,
     })
 
