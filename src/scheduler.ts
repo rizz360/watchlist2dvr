@@ -83,17 +83,29 @@ async function run(deps: RunDeps): Promise<void> {
   console.log(`  [source] Total unique items: ${allItems.size}`)
   const itemsTotal = allItems.size
 
-  // 2. Filter: already in library
+  // 2. Filter: already in library (batched, 10 concurrent)
   let remaining = [...allItems.values()]
   let itemsInLibrary = 0
   const inLibraryItems: Array<{ imdbId: string; originalTitle: string; source: "watchlist" | "rating"; userRating?: number }> = []
   for (const checker of checkers) {
-    const filtered = await Promise.all(
-      remaining.map(async (item) => ({
-        item,
-        inLibrary: await checker.existsInLibrary(item.imdbId).catch(() => false),
-      })),
-    )
+    console.log(`  [library] Checking ${remaining.length} item(s) against library...`)
+    const LIBRARY_CONCURRENCY = 10
+    const filtered: Array<{ item: typeof remaining[0]; inLibrary: boolean }> = []
+    let libDone = 0
+    for (let i = 0; i < remaining.length; i += LIBRARY_CONCURRENCY) {
+      const batch = remaining.slice(i, i + LIBRARY_CONCURRENCY)
+      const results = await Promise.all(
+        batch.map(async (item) => ({
+          item,
+          inLibrary: await checker.existsInLibrary(item.imdbId).catch(() => false),
+        })),
+      )
+      filtered.push(...results)
+      libDone += batch.length
+      if (libDone % 100 === 0 || libDone === remaining.length) {
+        console.log(`  [library] ${libDone}/${remaining.length} checked...`)
+      }
+    }
     const libItems = filtered.filter((r) => r.inLibrary)
     if (libItems.length > 0) {
       console.log(`  [library] Skipping ${libItems.length} item(s) already in library`)
@@ -108,10 +120,18 @@ async function run(deps: RunDeps): Promise<void> {
     remaining = filtered.filter((r) => !r.inLibrary).map((r) => r.item)
   }
 
-  // 3. Filter: already scheduled in state
-  const stateFiltered = await Promise.all(
-    remaining.map(async (item) => ({ item, scheduled: await state.isScheduled(item.imdbId) })),
-  )
+  // 3. Filter: already scheduled in state (batched, 20 concurrent)
+  console.log(`  [state] Checking ${remaining.length} item(s) against scheduled state...`)
+  const STATE_CONCURRENCY = 20
+  const stateResultsAll: Array<{ item: typeof remaining[0]; scheduled: boolean }> = []
+  for (let i = 0; i < remaining.length; i += STATE_CONCURRENCY) {
+    const batch = remaining.slice(i, i + STATE_CONCURRENCY)
+    const results = await Promise.all(
+      batch.map(async (item) => ({ item, scheduled: await state.isScheduled(item.imdbId) })),
+    )
+    stateResultsAll.push(...results)
+  }
+  const stateFiltered = stateResultsAll
   const itemsAlreadyScheduled = stateFiltered.filter((r) => r.scheduled).length
   const alreadyScheduledItems = stateFiltered
     .filter((r) => r.scheduled)
