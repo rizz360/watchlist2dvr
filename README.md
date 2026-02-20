@@ -245,11 +245,11 @@ The endpoint returns:
 ```json
 {
   "total": 592,
-  "matched": 15,
-  "scheduled": 3,
-  "inLibrary": 120,
-  "ambiguous": 8,
-  "unmatched": 454,
+  "matched": 0,
+  "scheduled": 2,
+  "inLibrary": 360,
+  "ambiguous": 0,
+  "unmatched": 230,
   "lastRun": "2026-02-20T12:00:00.000Z",
   "dryRun": false
 }

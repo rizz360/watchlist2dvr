@@ -46,8 +46,8 @@ export function startWebServer(deps: WebDeps, port: number): void {
         }
         res.json({
           total: last.itemsTotal,
-          matched: last.matchesFound,
-          scheduled: last.scheduled,
+          matched: last.matches.length,
+          scheduled: last.itemsAlreadyScheduled,
           inLibrary: last.itemsInLibrary,
           ambiguous: last.ambiguous,
           unmatched: last.unmatched,
