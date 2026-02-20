@@ -1,5 +1,5 @@
 import Fuse from "fuse.js"
-import { normalize, extractYear } from "./normalizer.js"
+import { normalize, extractYear, stripYearSuffix } from "./normalizer.js"
 import type { WatchlistItem } from "../sources/index.js"
 import type { EpgEvent } from "../epg/index.js"
 
@@ -41,10 +41,12 @@ export class MatchingEngine {
     const unmatched: WatchlistItem[] = []
 
     // Pre-normalize all EPG events once
+    // Strip trailing year suffix (e.g. "Foo (2025)") before normalization so
+    // title comparison works, but capture the year for filtering.
     const normalizedEvents = events.map((e) => ({
       event: e,
-      normalizedTitle: normalize(e.title),
-      year: e.year ?? (e.description ? extractYear(e.description) : undefined),
+      normalizedTitle: normalize(stripYearSuffix(e.title)),
+      year: e.year ?? extractYear(e.title) ?? (e.description ? extractYear(e.description) : undefined),
     }))
 
     for (const item of items) {

@@ -91,3 +91,11 @@ export function extractYear(text: string): number | undefined {
   }
   return undefined
 }
+
+/**
+ * Strip a trailing year suffix from an EPG title, e.g. "Foo (2025)" → "Foo".
+ * Many EPG providers (e.g. XMLTV guide.xml) append the release year to the title.
+ */
+export function stripYearSuffix(title: string): string {
+  return title.replace(/\s*[(\[](?:19|20)\d{2}[)\]]\s*$/, "").trim()
+}

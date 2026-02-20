@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { normalize, extractYear } from "./normalizer.js"
+import { normalize, extractYear, stripYearSuffix } from "./normalizer.js"
 
 describe("normalize", () => {
   it("lowercases and strips leading articles", () => {
@@ -45,5 +45,29 @@ describe("extractYear", () => {
 
   it("returns undefined when no year present", () => {
     expect(extractYear("Just a description with no year")).toBeUndefined()
+  })
+})
+
+describe("stripYearSuffix", () => {
+  it("strips trailing year in parentheses", () => {
+    expect(stripYearSuffix("Back to the Future Part III (1990)")).toBe("Back to the Future Part III")
+  })
+
+  it("strips trailing year in brackets", () => {
+    expect(stripYearSuffix("Aliens [1986]")).toBe("Aliens")
+  })
+
+  it("leaves titles without year unchanged", () => {
+    expect(stripYearSuffix("Interstellar")).toBe("Interstellar")
+  })
+
+  it("does not strip year from the middle of a title", () => {
+    expect(stripYearSuffix("2001: A Space Odyssey")).toBe("2001: A Space Odyssey")
+  })
+
+  it("engine matches EPG title with year suffix to watchlist item", () => {
+    // Integration: normalize(stripYearSuffix(...)) should equal normalize(clean title)
+    const { normalize: n, stripYearSuffix: s } = { normalize, stripYearSuffix }
+    expect(n(s("Back to the Future Part III (1990)"))).toBe(n("Back to the Future Part III"))
   })
 })
