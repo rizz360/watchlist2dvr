@@ -1,0 +1,30 @@
+services:
+  watchlist2dvr:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - CONFIG_PATH=/app/config.yaml
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./data:/data
+    ports:
+      - "3000:3000"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis_data:
