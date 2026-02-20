@@ -42,6 +42,8 @@ const PlexDvrSchema = z.object({
   type: z.literal("plex"),
   url: z.string().url().transform((u) => u.replace(/\/+$/, "")),
   token: z.string().min(1),
+  /** Library section ID for DVR Movies. Defaults to 6 if not specified. */
+  library_section_id: z.number().int().positive().optional(),
 })
 
 const DvrSchema = z.discriminatedUnion("type", [TvheadendDvrSchema, PlexDvrSchema])

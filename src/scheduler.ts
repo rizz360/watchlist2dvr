@@ -53,7 +53,7 @@ function buildDeps(config: Config, redis: Redis): RunDeps {
         : new TvheadendEpgProvider(config.dvr.url, config.dvr.username, config.dvr.password),
     dvr:
       config.dvr.type === "plex"
-        ? new PlexDvrAdapter(config.dvr.url, config.dvr.token)
+        ? new PlexDvrAdapter(config.dvr.url, config.dvr.token, config.dvr.library_section_id)
         : new TvheadendDvrAdapter(config.dvr.url, config.dvr.username, config.dvr.password),
     engine: new MatchingEngine({
       preferredLanguage: config.matching.preferred_language,
@@ -251,7 +251,10 @@ async function run(deps: RunDeps): Promise<void> {
     }
   }
 
-  const scheduledEventIds = new Set(dvrEntries.map((e) => e.entryId))
+  // Normalize entryIds to fully-decoded form so Plex ratingKeys (which vary in
+  // encoding level across subscription versions) can be compared with EPG eventIds.
+  const fullyDecode = (s: string) => { let p = "", c = s; while (p !== c) { p = c; try { c = decodeURIComponent(c) } catch { break } } return c }
+  const scheduledEventIds = new Set(dvrEntries.map((e) => fullyDecode(e.entryId)))
   let scheduled = 0
 
   for (const m of matches) {
@@ -259,12 +262,17 @@ async function run(deps: RunDeps): Promise<void> {
       console.log(`  [dvr] DRY RUN — would schedule: "${m.item.originalTitle}"`)
       continue
     }
-    if (scheduledEventIds.has(m.event.eventId)) {
+    if (scheduledEventIds.has(fullyDecode(m.event.eventId))) {
       console.log(`  [dvr] Already in DVR queue: "${m.item.originalTitle}"`)
       await state.markScheduled(m.item.imdbId)
       continue
     }
     try {
+      // Defense-in-depth: re-check state to guard against concurrent instances
+      if (await state.isScheduled(m.item.imdbId)) {
+        console.log(`  [dvr] Already scheduled (concurrent check): "${m.item.originalTitle}"`)
+        continue
+      }
       console.log(`  [dvr] Scheduling: "${m.item.originalTitle}" (eventId=${m.event.eventId}, epgTitle="${m.event.title}")`)
       await dvr.scheduleEvent(m.event.eventId)
       await state.markScheduled(m.item.imdbId)
@@ -351,8 +359,26 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => void shutdown())
   process.on("SIGINT", () => void shutdown())
 
+  /** Run with a Redis distributed lock to prevent concurrent instances. */
+  const LOCK_KEY = "lock:scheduler:run"
+  const LOCK_TTL_SECONDS = 1800 // 30 min safety TTL
+  async function runWithLock(): Promise<void> {
+    const token = `${process.pid}-${Date.now()}`
+    const acquired = await redis.set(LOCK_KEY, token, "EX", LOCK_TTL_SECONDS, "NX")
+    if (!acquired) {
+      console.log("[watchlist2dvr] Another instance is already running — skipping this run.")
+      return
+    }
+    try {
+      await run(deps)
+    } finally {
+      const current = await redis.get(LOCK_KEY)
+      if (current === token) await redis.del(LOCK_KEY)
+    }
+  }
+
   if (config.scheduler.mode === "oneshot") {
-    await run(deps)
+    await runWithLock()
     if (!config.web.enabled) {
       // No web server keeping the process alive — exit cleanly
       await redis.quit()
@@ -369,7 +395,7 @@ async function main(): Promise<void> {
 
   while (true) {
     try {
-      await run(deps)
+      await runWithLock()
     } catch (err) {
       console.error("[watchlist2dvr] Run failed:", (err as Error).message)
     }
