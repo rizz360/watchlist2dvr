@@ -84,7 +84,7 @@ export class PlexEpgProvider implements EpgProvider {
         title,
       },
       headers: { Accept: "application/json" },
-      timeout: 10_000,
+      timeout: 30_000,
     })
 
     const items = resp.data.MediaContainer.Metadata ?? []

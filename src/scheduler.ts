@@ -202,7 +202,9 @@ async function run(deps: RunDeps): Promise<void> {
   console.log(`  [epg] Querying ${titlesToQuery.size} title(s) against EPG...`)
   const epgResults: Awaited<ReturnType<typeof epg.searchByTitle>> = []
   const seenEventIds = new Set<string>()
+  let epgQueryCount = 0
   for (const title of titlesToQuery) {
+    if (epgQueryCount++ > 0) await new Promise((r) => setTimeout(r, 200))
     try {
       const events = await epg.searchByTitle(title)
       for (const e of events) {
