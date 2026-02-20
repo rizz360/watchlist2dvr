@@ -1,4 +1,5 @@
 import axios from "axios"
+import http from "http"
 import type { EpgProvider, EpgEvent } from "./index.js"
 
 interface PlexMediaProvider {
@@ -47,7 +48,10 @@ export class PlexEpgProvider implements EpgProvider {
   }
 
   private getProviderId(): Promise<string | null> {
-    if (this.staticProviderId) return Promise.resolve(this.staticProviderId)
+    if (this.staticProviderId) {
+      console.log(`  [epg:plex] Using static provider: ${this.staticProviderId}`)
+      return Promise.resolve(this.staticProviderId)
+    }
     if (!this.providerIdPromise) {
       this.providerIdPromise = this.fetchProviderId().catch((err) => {
         this.providerIdPromise = null // reset so next call retries
@@ -90,7 +94,8 @@ export class PlexEpgProvider implements EpgProvider {
         type: 1, // 1 = Movie
         title,
       },
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", Connection: "close" },
+      httpAgent: new http.Agent({ keepAlive: false }),
       timeout: 30_000,
     })
 
