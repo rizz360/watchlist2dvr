@@ -9,17 +9,17 @@ You mark a film "Watch Later" on IMDb. watchlist2dvr picks it up, resolves the c
 ## How it works
 
 ```
-IMDb CSV / Trakt
+IMDb watchlist CSV + ratings CSV (or Trakt)
       ↓
-Plex / Jellyfin library check  →  skip if already owned
+Plex / Jellyfin library check  →  skip if already owned (bulk fetch, Set lookup)
       ↓
 TMDB localization resolver     →  "Die Hard" → "Stirb langsam"
       ↓
-Title normalization pipeline   →  strip articles, editions, punctuation
+Title normalization pipeline   →  strip articles, editions, punctuation, year suffixes
       ↓
 TVHeadend EPG search           →  find upcoming broadcasts
       ↓
-Matching engine                →  preferred language → fallbacks → year filter
+Matching engine                →  preferred language → fallbacks → year filter → earliest airing
       ↓
 Idempotency check              →  Redis state + DVR queue
       ↓
@@ -32,23 +32,26 @@ Every layer is a swappable adapter. The matching engine never knows which source
 
 ## Features
 
-- **IMDb watchlist** — via CSV export or Trakt API passthrough
+- **IMDb watchlist + ratings** — point `path` at a directory; all CSVs are loaded automatically. Ratings CSVs filter by `min_rating`. Only Movies and TV Movies are processed (video games, shorts, and series are skipped).
 - **Localized title matching** — resolves titles in your preferred language via TMDB (e.g. German, French, …)
-- **Library check** — skips movies already in Plex or Jellyfin
-- **Deterministic matching** — lowercase → strip articles → strip editions → year filter. Fuzzy matching is opt-in fallback only
+- **Library check** — skips movies already in Plex or Jellyfin. The entire library is fetched once and indexed as an in-memory Set — no per-item HTTP requests.
+- **Deterministic matching** — lowercase → strip articles → strip editions → strip year suffixes → year filter. Fuzzy matching is opt-in fallback only. Multiple airings of the same movie resolve to the earliest broadcast.
 - **Idempotency** — never schedules the same movie twice (Redis state + live DVR queue check)
 - **Dry-run mode** — validate match quality before writing anything to TVHeadend
-- **Aggressive caching** — TMDB lookups cached 7 days, library checks 6 hours; EPG is always live
-- **Read-only web dashboard** — watchlist status, upcoming recordings, run history
-- **Docker-first** — ships as a single container alongside Redis
+- **Aggressive caching** — TMDB lookups cached 7 days, library index 6 hours; EPG is always live
+- **Read-only web dashboard** — full watchlist status with search/filter, upcoming recordings, run history, TMDB cache debug
+- **Docker-first** — ships as a single container alongside Redis; Tailscale MagicDNS supported via `dns: [100.100.100.100]`
 
 ---
 
 ## Quick start
 
-### 1. Export your IMDb watchlist
+### 1. Export your IMDb data
 
-Go to [imdb.com/list/watchlist](https://www.imdb.com/list/watchlist), click **Export** and save the file as `data/watchlist.csv` in the project directory.
+- **Watchlist**: [imdb.com/list/watchlist](https://www.imdb.com/list/watchlist) → Export
+- **Ratings** (optional): [imdb.com/user/ur.../ratings](https://www.imdb.com/user/) → Export
+
+Drop both CSV files into the `data/` directory. The source auto-detects which is which by inspecting the headers. Ratings entries below `min_rating` are ignored.
 
 ### 2. Configure
 
@@ -61,9 +64,9 @@ Edit `config.yaml` — at minimum fill in:
 | Key | Where to get it |
 |---|---|
 | `tmdb.api_key` | [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api) — free account |
-| `library[].token` (Plex) | Plex Web → Account → Authorized Devices → token in URL, or use [plex.tv/claim](https://plex.tv/claim) |
+| `library[].token` (Plex) | Plex Web → Account → Authorized Devices → token in URL |
 | `library[].api_key` (Jellyfin) | Jellyfin Dashboard → API Keys |
-| `dvr.url` | Your TVHeadend base URL, e.g. `http://tvheadend:9981` |
+| `dvr.url` | Your TVHeadend base URL, e.g. `http://192.168.1.10:9981` |
 
 ### 3. First run (dry-run)
 
@@ -94,7 +97,8 @@ Restart: `docker compose up -d`
 # --- Watchlist sources (at least one required) ---
 sources:
   - type: imdb_csv
-    path: /data/watchlist.csv       # mount this file into the container
+    path: /data             # directory — all .csv files are loaded automatically
+    min_rating: 5           # for ratings CSVs: only include movies rated ≥ this
 
   # - type: trakt
   #   client_id: ""
@@ -156,21 +160,22 @@ Most DIY projects fail here. watchlist2dvr uses a deterministic pipeline — no 
 
 ### Normalization steps (in order)
 
-1. Strip edition markers — `Extended Edition`, `Director's Cut`, `Remastered`, …
-2. Lowercase
-3. Normalize umlauts (optional) — `ä → ae`, `ö → oe`, `ü → ue`
-4. Strip leading articles — `the`, `a`, `an`, `der`, `die`, `das`, `le`, `la`, …
-5. Strip diacritical marks — `é → e`, `ñ → n`, …
-6. Remove punctuation
-7. Collapse whitespace
+1. Strip trailing year suffixes — `Foo (2025)` → `Foo`
+2. Strip edition markers — `Extended Edition`, `Director's Cut`, `Remastered`, …
+3. Lowercase
+4. Normalize umlauts — `ä → ae`, `ö → oe`, `ü → ue`
+5. Strip leading articles — `the`, `a`, `an`, `der`, `die`, `das`, `le`, `la`, …
+6. Strip diacritical marks — `é → e`, `ñ → n`, …
+7. Remove punctuation
+8. Collapse whitespace
 
 ### Matching algorithm
 
-1. Normalize the EPG event title
+1. Pre-normalize all EPG events once (year suffixes stripped before comparison, but year is extracted separately for filtering)
 2. Try exact match on `preferred_language` title
-3. Try exact match on each `fallback_languages` title
+3. Try exact match on each `fallback_languages` title in order
 4. Filter candidates by year (±`year_tolerance`, skipped if EPG has no year and `strict_year_match: false`)
-5. If still ambiguous → log, skip
+5. If multiple airings remain → pick the earliest broadcast
 6. If `fuzzy_enabled: true` → Fuse.js as last resort
 
 ### Why TMDB?
@@ -182,7 +187,7 @@ IMDb ID  →  TMDB /find/{id}  →  TMDB /movie/{id}/translations
          →  { de: "Stirb langsam", en: "Die Hard", fr: "Piège de cristal", … }
 ```
 
-Both lookups are Redis-cached for 7 days.
+Both lookups are Redis-cached for 7 days and fetched 10 at a time.
 
 ---
 
@@ -192,11 +197,10 @@ Available at `http://localhost:3000` (or your configured port).
 
 | Tab | Content |
 |---|---|
-| **Watchlist** | All items from the last run — matched, ambiguous, and unmatched, with IMDb links |
+| **Watchlist** | All 592+ items from the last run — matched, scheduled, in-library, and unmatched, with IMDb links, user ratings, and source badges. Filterable by status and searchable by title. |
 | **Upcoming** | Live DVR queue from TVHeadend, filtered to scheduled/recording, sorted by airtime |
 | **History** | Last 50 runs — item counts, scheduled count, errors, dry-run indicator |
-
-The dashboard refreshes automatically every 5 minutes.
+| **Debug** | TMDB cache size by key prefix, live IMDb ID lookup |
 
 ---
 
@@ -206,12 +210,13 @@ The dashboard refreshes automatically every 5 minutes.
 |---|---|---|
 | TMDB IMDb → ID | Redis | 7 days |
 | TMDB localized titles | Redis | 7 days |
-| Plex library check | Redis | 6 hours |
-| Jellyfin library check | Redis | 6 hours |
+| Plex library index | Redis | 6 hours |
+| Jellyfin library index | Redis | 6 hours |
 | Scheduled-item state | Redis | 30 days |
 | TVHeadend EPG | — | not cached (always live) |
 
-To clear all caches: `docker compose exec redis redis-cli FLUSHDB`
+To clear all caches: `docker compose exec redis redis-cli FLUSHDB`  
+To force a Plex re-index: `docker compose exec redis redis-cli del plex:library:all`
 
 ---
 
@@ -224,15 +229,22 @@ The default `docker-compose.yml` runs two services:
 | `watchlist2dvr` | Built from local `Dockerfile` |
 | `redis` | `redis:7-alpine` with AOF persistence |
 
-Mount your IMDb CSV and config:
+Mount your IMDb CSVs and config:
 
 ```yaml
 volumes:
   - ./config.yaml:/app/config.yaml:ro
-  - ./data:/data
+  - ./data:/data          # place watchlist.csv and/or ratings.csv here
 ```
 
 `config.yaml` is gitignored — never committed.
+
+If TVHeadend or Plex are accessed via **Tailscale MagicDNS**, add the Tailscale DNS resolver to the compose service:
+
+```yaml
+dns:
+  - 100.100.100.100
+```
 
 ---
 
@@ -268,7 +280,7 @@ npm test             # vitest
 npm run typecheck    # tsc --noEmit
 ```
 
-Tests cover the normalization pipeline and matching engine. All 14 tests run in under 400ms with no network calls.
+Tests cover the normalization pipeline and matching engine. All 20 tests run in under 400ms with no network calls.
 
 ---
 
