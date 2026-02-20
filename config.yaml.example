@@ -1,0 +1,49 @@
+sources:
+  - type: trakt
+    client_id: "YOUR_TRAKT_CLIENT_ID"
+    client_secret: "YOUR_TRAKT_CLIENT_SECRET"
+    username: "YOUR_TRAKT_USERNAME"
+
+  # Uncomment to use IMDb CSV export instead (or in addition):
+  # - type: imdb_csv
+  #   path: /data/watchlist.csv
+
+library:
+  - type: jellyfin
+    url: http://jellyfin:8096
+    api_key: "YOUR_JELLYFIN_API_KEY"
+
+  # - type: plex
+  #   url: http://plex:32400
+  #   token: "YOUR_PLEX_TOKEN"
+
+  # Remove the library section entirely to disable library checks.
+
+tmdb:
+  api_key: "YOUR_TMDB_API_KEY"
+
+matching:
+  preferred_language: de
+  fallback_languages:
+    - en
+  strict_year_match: false
+  year_tolerance: 1
+  fuzzy_enabled: false
+  fuzzy_threshold: 0.85
+
+dvr:
+  type: tvheadend
+  url: http://tvheadend:9981
+  username: ""
+  password: ""
+
+state:
+  redis_url: redis://redis:6379
+
+scheduler:
+  mode: polling          # polling | oneshot
+  interval_minutes: 60
+
+web:
+  enabled: true
+  port: 3000
