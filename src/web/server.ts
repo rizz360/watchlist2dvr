@@ -1,10 +1,12 @@
 import express from "express"
+import type { Redis } from "ioredis"
 import type { DvrAdapter } from "../dvr/index.js"
 import type { HistoryStore } from "../state/history.js"
 
 export interface WebDeps {
   dvr: DvrAdapter
   history: HistoryStore
+  redis: Redis
 }
 
 export function startWebServer(deps: WebDeps, port: number): void {
@@ -87,6 +89,37 @@ export function startWebServer(deps: WebDeps, port: number): void {
       .catch((err: Error) => res.status(500).json({ error: err.message }))
   })
 
+  app.get("/api/debug/cache", (_req, res) => {
+    const prefixes = ["tmdb:id:", "tmdb:titles:", "plex:library:", "jellyfin:library:"]
+    Promise.all(prefixes.map((p) => deps.redis.keys(`${p}*`)))
+      .then((results) => {
+        const counts: Record<string, number> = {}
+        prefixes.forEach((p, i) => (counts[p] = results[i].length))
+        res.json({ counts })
+      })
+      .catch((err: Error) => res.status(500).json({ error: err.message }))
+  })
+
+  app.get("/api/debug/cache/:imdbId", (req, res) => {
+    const { imdbId } = req.params
+    if (!/^tt\d+$/.test(imdbId)) {
+      res.status(400).json({ error: "Invalid IMDb ID" })
+      return
+    }
+    Promise.all([
+      deps.redis.get(`tmdb:id:${imdbId}`),
+      deps.redis.get(`tmdb:titles:${imdbId}`),
+    ])
+      .then(([tmdbId, titlesRaw]) => {
+        res.json({
+          imdbId,
+          tmdbId: tmdbId ? parseInt(tmdbId, 10) : null,
+          titles: titlesRaw ? (JSON.parse(titlesRaw) as Record<string, string>) : null,
+        })
+      })
+      .catch((err: Error) => res.status(500).json({ error: err.message }))
+  })
+
   app.get("/{*splat}", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8")
     res.send(dashboardHtml())
@@ -155,7 +188,7 @@ a:hover{text-decoration:underline}
   <button class="active" onclick="showTab('watchlist',this)">Watchlist</button>
   <button onclick="showTab('upcoming',this)">Upcoming</button>
   <button onclick="showTab('history',this)">History</button>
-</nav>
+  <button onclick="showTab('debug',this)">Debug</button>
 <main>
   <div id="tab-watchlist" class="tab active">
     <div class="stat-row" id="stat-row"></div>
@@ -166,6 +199,18 @@ a:hover{text-decoration:underline}
   </div>
   <div id="tab-history" class="tab">
     <div id="hi-content"><p class="empty">Loading&hellip;</p></div>
+  </div>
+  <div id="tab-debug" class="tab">
+    <div id="debug-content"><p class="empty">Loading&hellip;</p></div>
+    <div style="margin-top:1.5rem">
+      <p class="sec">Look up IMDb ID</p>
+      <div style="display:flex;gap:.6rem;margin-top:.5rem">
+        <input id="debug-id-input" type="text" placeholder="tt0088763" style="background:#1a1a30;border:1px solid #2a2a4a;color:#e0e0f0;padding:.5rem .8rem;border-radius:6px;font-size:.88rem;width:220px">
+        <button onclick="lookupCache()" style="background:#2a2a4a;border:none;color:#a78bfa;padding:.5rem 1rem;border-radius:6px;cursor:pointer;font-size:.88rem">Look up</button>
+      </div>
+      <div id="debug-lookup-result" style="margin-top:.8rem"></div>
+    </div>
+  </div>
   </div>
 </main>
 <script>
@@ -294,8 +339,46 @@ function loadHistory() {
   });
 }
 
-loadStatus(); loadWatchlist(); loadUpcoming(); loadHistory();
-setInterval(function(){ loadStatus(); loadWatchlist(); loadUpcoming(); loadHistory(); }, 5*60*1000);
+function loadDebug() {
+  fetch('/api/debug/cache').then(function(r){return r.json()}).then(function(data) {
+    var html = '<p class="sec">Redis cache</p>';
+    html += '<table><thead><tr><th>Key prefix</th><th>Entries</th></tr></thead><tbody>';
+    Object.keys(data.counts).forEach(function(k) {
+      html += '<tr><td><code>'+esc(k)+'*</code></td><td>'+data.counts[k]+'</td></tr>';
+    });
+    html += '</tbody></table>';
+    document.getElementById('debug-content').innerHTML = html;
+  }).catch(function(e) {
+    document.getElementById('debug-content').innerHTML = '<p class="err-box">'+esc(String(e))+'</p>';
+  });
+}
+
+function lookupCache() {
+  var id = document.getElementById('debug-id-input').value.trim();
+  if (!id) return;
+  var el = document.getElementById('debug-lookup-result');
+  el.innerHTML = '<p style="color:#6b6b8a;font-size:.85rem">Loading\u2026</p>';
+  fetch('/api/debug/cache/'+encodeURIComponent(id)).then(function(r){return r.json()}).then(function(d) {
+    if (d.error) { el.innerHTML = '<p class="err-box">'+esc(d.error)+'</p>'; return; }
+    var html = '<table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>';
+    html += '<tr><td>IMDb ID</td><td>'+esc(d.imdbId)+'</td></tr>';
+    html += '<tr><td>TMDB ID</td><td>'+(d.tmdbId || '<span style="color:#6b6b8a">not cached</span>')+'</td></tr>';
+    if (d.titles) {
+      Object.keys(d.titles).sort().forEach(function(lang) {
+        html += '<tr><td><code>'+esc(lang)+'</code></td><td>'+esc(d.titles[lang])+'</td></tr>';
+      });
+    } else {
+      html += '<tr><td>Titles</td><td><span style="color:#6b6b8a">not cached</span></td></tr>';
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  }).catch(function(e) {
+    el.innerHTML = '<p class="err-box">'+esc(String(e))+'</p>';
+  });
+}
+
+loadStatus(); loadWatchlist(); loadUpcoming(); loadHistory(); loadDebug();
+setInterval(function(){ loadStatus(); loadWatchlist(); loadUpcoming(); loadHistory(); loadDebug(); }, 5*60*1000);
 </script>
 </body>
 </html>`

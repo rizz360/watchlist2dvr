@@ -150,13 +150,24 @@ async function run(deps: RunDeps): Promise<void> {
     return
   }
 
-  // 4. Resolve TMDB localized titles
+  // 4. Resolve TMDB localized titles (batched parallel, 10 at a time)
   console.log(`  [tmdb] Resolving titles for ${remaining.length} item(s)...`)
-  for (const item of remaining) {
-    try {
-      item.localizedTitles = await tmdb.resolveLocalizedTitles(item.imdbId)
-    } catch (err) {
-      errors.push(`TMDB lookup failed for ${item.imdbId}: ${(err as Error).message}`)
+  const TMDB_CONCURRENCY = 10
+  let tmdbDone = 0
+  for (let i = 0; i < remaining.length; i += TMDB_CONCURRENCY) {
+    const batch = remaining.slice(i, i + TMDB_CONCURRENCY)
+    await Promise.all(
+      batch.map(async (item) => {
+        try {
+          item.localizedTitles = await tmdb.resolveLocalizedTitles(item.imdbId)
+        } catch (err) {
+          errors.push(`TMDB lookup failed for ${item.imdbId}: ${(err as Error).message}`)
+        }
+        tmdbDone++
+      }),
+    )
+    if (tmdbDone % 50 === 0 || tmdbDone === remaining.length) {
+      console.log(`  [tmdb] ${tmdbDone}/${remaining.length} resolved...`)
     }
   }
 
@@ -308,7 +319,7 @@ async function main(): Promise<void> {
   const deps = buildDeps(config, redis)
 
   if (config.web.enabled) {
-    startWebServer({ dvr: deps.dvr, history: deps.history }, config.web.port)
+    startWebServer({ dvr: deps.dvr, history: deps.history, redis }, config.web.port)
   }
 
   const shutdown = async () => {
