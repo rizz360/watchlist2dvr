@@ -53,7 +53,7 @@ export class TmdbResolver {
     const cacheKey = `tmdb:id:${imdbId}`
     const cached = await this.redis.get(cacheKey)
     if (cached) {
-      return parseInt(cached, 10)
+      return cached === "NOT_FOUND" ? null : parseInt(cached, 10)
     }
 
     const response = await axios.get<TmdbFindResult>(`${TMDB_BASE}/find/${imdbId}`, {
@@ -63,6 +63,8 @@ export class TmdbResolver {
 
     const result = response.data.movie_results[0]
     if (!result) {
+      // Negative cache: avoid re-querying on every run for movies not in TMDB
+      await this.redis.set(cacheKey, "NOT_FOUND", "EX", CACHE_TTL_SECONDS)
       return null
     }
 

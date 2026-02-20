@@ -95,7 +95,7 @@ export class PlexEpgProvider implements EpgProvider {
         title,
       },
       headers: { Accept: "application/json", Connection: "close" },
-      httpAgent: new http.Agent({ keepAlive: false }),
+      httpAgent: new http.Agent({ keepAlive: false, family: 4 }),
       timeout: 30_000,
     })
 

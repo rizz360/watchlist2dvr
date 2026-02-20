@@ -1,5 +1,8 @@
 import axios from "axios"
+import http from "http"
 import type { DvrAdapter, DvrEntry } from "./index.js"
+
+const ipv4Agent = new http.Agent({ family: 4 })
 
 interface PlexMediaProvider {
   id?: number | string
@@ -66,6 +69,7 @@ export class PlexDvrAdapter implements DvrAdapter {
       {
         params: { "X-Plex-Token": this.token },
         headers: { Accept: "application/json" },
+        httpAgent: ipv4Agent,
         timeout: 10_000,
       },
     )
@@ -100,6 +104,7 @@ export class PlexDvrAdapter implements DvrAdapter {
     console.log(`  [dvr:plex] Subscribing: ${fullyDecode(eventId)}`)
     await axios.post(url, null, {
       headers: { Accept: "application/json" },
+      httpAgent: ipv4Agent,
       timeout: 10_000,
     })
   }
@@ -110,6 +115,7 @@ export class PlexDvrAdapter implements DvrAdapter {
       {
         params: { "X-Plex-Token": this.token },
         headers: { Accept: "application/json" },
+        httpAgent: ipv4Agent,
         timeout: 10_000,
       },
     )
