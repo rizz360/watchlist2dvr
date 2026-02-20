@@ -5,8 +5,11 @@ sources:
     username: "YOUR_TRAKT_USERNAME"
 
   # Uncomment to use IMDb CSV export instead (or in addition):
+  # Drop any IMDb export CSV (watchlist, ratings, etc.) into the directory —
+  # type is auto-detected by headers.
   # - type: imdb_csv
-  #   path: /data/watchlist.csv
+  #   path: /data             # directory or single file
+  #   min_rating: 7           # for ratings CSVs: skip movies rated below this (1–10, default: 1)
 
 library:
   - type: jellyfin

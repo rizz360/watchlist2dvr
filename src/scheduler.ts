@@ -36,7 +36,7 @@ function buildDeps(config: Config, redis: Redis): RunDeps {
     tmdb: new TmdbResolver(config.tmdb.api_key, redis),
     sources: config.sources.map((s) => {
       if (s.type === "trakt") return new TraktSource(s.client_id, s.username)
-      return new ImdbCsvSource(s.path)
+      return new ImdbCsvSource(s.path, s.min_rating)
     }),
     checkers:
       config.library.length > 0
