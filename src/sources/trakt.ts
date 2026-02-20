@@ -28,6 +28,7 @@ export class TraktSource implements WatchlistSource {
           "trakt-api-version": "2",
           "trakt-api-key": this.clientId,
         },
+        timeout: 10_000,
       },
     )
 

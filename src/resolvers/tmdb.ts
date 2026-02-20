@@ -33,7 +33,7 @@ export class TmdbResolver {
 
     const response = await axios.get<{ translations: TmdbTranslation[] }>(
       `${TMDB_BASE}/movie/${tmdbId}/translations`,
-      { params: { api_key: this.apiKey } },
+      { params: { api_key: this.apiKey }, timeout: 10_000 },
     )
 
     const titles: Record<string, string> = {}
@@ -56,6 +56,7 @@ export class TmdbResolver {
 
     const response = await axios.get<TmdbFindResult>(`${TMDB_BASE}/find/${imdbId}`, {
       params: { api_key: this.apiKey, external_source: "imdb_id" },
+      timeout: 10_000,
     })
 
     const result = response.data.movie_results[0]

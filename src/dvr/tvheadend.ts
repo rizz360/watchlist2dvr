@@ -38,6 +38,7 @@ export class TvheadendDvrAdapter implements DvrAdapter {
     const response = await axios.get<TvhDvrResponse>(`${this.baseUrl}/api/dvr/entry/grid`, {
       auth: this.auth,
       params: { limit: 10000 },
+      timeout: 10_000,
     })
 
     return response.data.entries.map((e) => ({

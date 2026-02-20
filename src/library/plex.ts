@@ -4,7 +4,8 @@ import type { LibraryChecker } from "./index.js"
 
 interface PlexMediaContainer {
   MediaContainer: {
-    totalSize: number
+    totalSize?: number
+    size?: number
     Metadata?: Array<{ guid?: string; Guid?: Array<{ id: string }> }>
   }
 }
@@ -34,8 +35,10 @@ export class PlexLibraryChecker implements LibraryChecker {
         guid,
       },
       headers: { Accept: "application/json" },
+      timeout: 10_000,
     })
-    const exists = (response.data.MediaContainer.totalSize ?? 0) > 0
+    const mc = response.data.MediaContainer
+    const exists = (mc.totalSize ?? mc.size ?? mc.Metadata?.length ?? 0) > 0
     await this.redis.set(cacheKey, exists ? "1" : "0", "EX", CACHE_TTL_SECONDS)
     return exists
   }

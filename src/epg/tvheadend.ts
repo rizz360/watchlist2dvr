@@ -31,6 +31,7 @@ export class TvheadendEpgProvider implements EpgProvider {
         title,
         limit: 100,
       },
+      timeout: 10_000,
     })
 
     return response.data.entries.map((e) => ({

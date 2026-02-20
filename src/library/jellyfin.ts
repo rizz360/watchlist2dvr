@@ -36,6 +36,7 @@ export class JellyfinLibraryChecker implements LibraryChecker {
         Fields: "ProviderIds",
         Limit: 1,
       },
+      timeout: 10_000,
     })
     const exists = response.data.TotalRecordCount > 0
     await this.redis.set(cacheKey, exists ? "1" : "0", "EX", CACHE_TTL_SECONDS)
