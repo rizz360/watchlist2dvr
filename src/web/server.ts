@@ -60,7 +60,7 @@ export function startWebServer(deps: WebDeps, port: number): void {
       .catch((err: Error) => res.status(500).json({ error: err.message }))
   })
 
-  app.get("*", (_req, res) => {
+  app.get("/{*splat}", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8")
     res.send(dashboardHtml())
   })
