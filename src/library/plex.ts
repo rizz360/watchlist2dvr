@@ -108,7 +108,9 @@ export class PlexLibraryChecker implements LibraryChecker {
       }
     }
 
-    await this.redis.set(CACHE_KEY, JSON.stringify([...ids]), "EX", CACHE_TTL_SECONDS)
+    if (ids.size > 0) {
+      await this.redis.set(CACHE_KEY, JSON.stringify([...ids]), "EX", CACHE_TTL_SECONDS)
+    }
     console.log(`  [library:plex] Indexed ${ids.size} movie(s)`)
     return ids
   }

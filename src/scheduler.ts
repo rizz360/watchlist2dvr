@@ -341,7 +341,12 @@ async function main(): Promise<void> {
 
   if (config.scheduler.mode === "oneshot") {
     await run(deps)
-    await redis.quit()
+    if (!config.web.enabled) {
+      // No web server keeping the process alive — exit cleanly
+      await redis.quit()
+    }
+    // If web is enabled the HTTP server holds the event loop; Redis stays
+    // connected so the dashboard can serve the completed run data.
     return
   }
 
