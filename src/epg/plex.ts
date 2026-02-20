@@ -49,8 +49,11 @@ export class PlexEpgProvider implements EpgProvider {
 
   private getProviderId(): Promise<string | null> {
     if (this.staticProviderId) {
-      console.log(`  [epg:plex] Using static provider: ${this.staticProviderId}`)
-      return Promise.resolve(this.staticProviderId)
+      if (!this.providerIdPromise) {
+        console.log(`  [epg:plex] Using static provider: ${this.staticProviderId}`)
+        this.providerIdPromise = Promise.resolve(this.staticProviderId)
+      }
+      return this.providerIdPromise
     }
     if (!this.providerIdPromise) {
       this.providerIdPromise = this.fetchProviderId().catch((err) => {
