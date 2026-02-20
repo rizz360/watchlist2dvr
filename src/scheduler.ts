@@ -41,8 +41,8 @@ function buildDeps(config: Config, redis: Redis): RunDeps {
     checkers:
       config.library.length > 0
         ? config.library.map((l) => {
-            if (l.type === "jellyfin") return new JellyfinLibraryChecker(l.url, l.api_key)
-            return new PlexLibraryChecker(l.url, l.token)
+            if (l.type === "jellyfin") return new JellyfinLibraryChecker(l.url, l.api_key, redis)
+            return new PlexLibraryChecker(l.url, l.token, redis)
           })
         : [new NoopLibraryChecker()],
     epg: new TvheadendEpgProvider(config.dvr.url, config.dvr.username, config.dvr.password),
