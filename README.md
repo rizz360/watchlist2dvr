@@ -46,14 +46,22 @@ Every layer is a swappable adapter. The matching engine never knows which source
 
 ## Quick start
 
-### 1. Export your IMDb data
+### 1. Clone and prepare
+
+```sh
+git clone https://github.com/your-org/watchlist2dvr.git
+cd watchlist2dvr
+mkdir -p data
+```
+
+### 2. Export your IMDb data
 
 - **Watchlist**: [imdb.com/list/watchlist](https://www.imdb.com/list/watchlist) → Export
 - **Ratings** (optional): [imdb.com/user/ur.../ratings](https://www.imdb.com/user/) → Export
 
 Drop both CSV files into the `data/` directory. The source auto-detects which is which by inspecting the headers. Ratings entries below `min_rating` are ignored.
 
-### 2. Configure
+### 3. Configure
 
 ```sh
 cp config.yaml.example config.yaml
@@ -69,7 +77,9 @@ Edit `config.yaml` — at minimum fill in:
 | `dvr.url` | TVHeadend: `http://192.168.1.10:9981` · Plex: `http://plex:32400` |
 | `dvr.token` (Plex) | Same Plex token as the library checker |
 
-### 3. First run (dry-run)
+> `config.yaml` is gitignored and never committed — keep your tokens safe.
+
+### 4. First run (dry-run)
 
 ```sh
 docker compose up --build
@@ -77,7 +87,7 @@ docker compose up --build
 
 `dry_run: true` is the default. Nothing is written to the DVR. Check the logs and open the dashboard at **http://localhost:3000** to verify match quality.
 
-### 4. Enable scheduling
+### 5. Enable scheduling
 
 Once the matches look correct, flip the flag in `config.yaml`:
 
@@ -88,7 +98,11 @@ scheduler:
   interval_minutes: 60
 ```
 
-Restart: `docker compose up -d`
+Then run in the background:
+
+```sh
+docker compose up -d --build
+```
 
 ---
 
