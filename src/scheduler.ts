@@ -347,6 +347,10 @@ async function main(): Promise<void> {
   const redis = new Redis(config.state.redis_url)
   redis.on("error", (err: Error) => console.error("[redis]", err.message))
 
+  // Clear any stale lock left by a previously killed container.
+  // Safe because Docker Compose ensures only one app container runs at a time.
+  await redis.del("lock:scheduler:run")
+
   const deps = buildDeps(config, redis)
 
   if (config.web.enabled) {
