@@ -17,13 +17,13 @@ TMDB localization resolver     →  "Die Hard" → "Stirb langsam"
       ↓
 Title normalization pipeline   →  strip articles, editions, punctuation, year suffixes
       ↓
-TVHeadend EPG search           →  find upcoming broadcasts
+EPG search (TVHeadend or Plex) →  find upcoming broadcasts
       ↓
 Matching engine                →  preferred language → fallbacks → year filter → earliest airing
       ↓
 Idempotency check              →  Redis state + DVR queue
       ↓
-TVHeadend DVR                  →  schedule recording
+DVR (TVHeadend or Plex)        →  schedule recording
 ```
 
 Every layer is a swappable adapter. The matching engine never knows which source, library, or DVR is in use.
@@ -36,8 +36,8 @@ Every layer is a swappable adapter. The matching engine never knows which source
 - **Localized title matching** — resolves titles in your preferred language via TMDB (e.g. German, French, …)
 - **Library check** — skips movies already in Plex or Jellyfin. The entire library is fetched once and indexed as an in-memory Set — no per-item HTTP requests.
 - **Deterministic matching** — lowercase → strip articles → strip editions → strip year suffixes → year filter. Fuzzy matching is opt-in fallback only. Multiple airings of the same movie resolve to the earliest broadcast.
-- **Idempotency** — never schedules the same movie twice (Redis state + live DVR queue check)
-- **Dry-run mode** — validate match quality before writing anything to TVHeadend
+- **Idempotency** — never schedules the same movie twice (Redis distributed lock + state check + live DVR queue check)
+- **Dry-run mode** — validate match quality before writing anything to the DVR
 - **Aggressive caching** — TMDB lookups cached 7 days, library index 6 hours; EPG is always live
 - **Read-only web dashboard** — full watchlist status with search/filter, upcoming recordings, run history, TMDB cache debug
 - **Docker-first** — ships as a single container alongside Redis; Tailscale MagicDNS supported via `dns: [100.100.100.100]`
@@ -66,7 +66,8 @@ Edit `config.yaml` — at minimum fill in:
 | `tmdb.api_key` | [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api) — free account |
 | `library[].token` (Plex) | Plex Web → Account → Authorized Devices → token in URL |
 | `library[].api_key` (Jellyfin) | Jellyfin Dashboard → API Keys |
-| `dvr.url` | Your TVHeadend base URL, e.g. `http://192.168.1.10:9981` |
+| `dvr.url` | TVHeadend: `http://192.168.1.10:9981` · Plex: `http://plex:32400` |
+| `dvr.token` (Plex) | Same Plex token as the library checker |
 
 ### 3. First run (dry-run)
 
@@ -74,7 +75,7 @@ Edit `config.yaml` — at minimum fill in:
 docker compose up --build
 ```
 
-`dry_run: true` is the default. Nothing is written to TVHeadend. Check the logs and open the dashboard at **http://localhost:3000** to verify match quality.
+`dry_run: true` is the default. Nothing is written to the DVR. Check the logs and open the dashboard at **http://localhost:3000** to verify match quality.
 
 ### 4. Enable scheduling
 
@@ -129,12 +130,19 @@ matching:
   fuzzy_enabled: false          # opt-in fuzzy fallback (Fuse.js)
   fuzzy_threshold: 0.85         # 0–1, higher = stricter
 
-# --- DVR backend ---
+# --- DVR backend (choose one) ---
 dvr:
   type: tvheadend
   url: http://tvheadend:9981
   username: ""                  # leave empty for anonymous access
   password: ""
+
+# --- OR: Plex DVR (requires Plex Pass + tuner + Live TV configured) ---
+# dvr:
+#   type: plex
+#   url: http://plex:32400
+#   token: ""
+#   library_section_id: 6       # optional: DVR Movies library section ID (default: 6)
 
 # --- State / cache ---
 state:
@@ -198,7 +206,7 @@ Available at `http://localhost:3000` (or your configured port).
 | Tab | Content |
 |---|---|
 | **Watchlist** | All 592+ items from the last run — matched, scheduled, in-library, and unmatched, with IMDb links, user ratings, and source badges. Filterable by status and searchable by title. |
-| **Upcoming** | Live DVR queue from TVHeadend, filtered to scheduled/recording, sorted by airtime |
+| **Upcoming** | Live DVR queue (TVHeadend or Plex subscriptions), filtered to scheduled/recording, sorted by creation time |
 | **History** | Last 50 runs — item counts, scheduled count, errors, dry-run indicator |
 | **Debug** | TMDB cache size by key prefix, live IMDb ID lookup |
 
@@ -213,7 +221,8 @@ Available at `http://localhost:3000` (or your configured port).
 | Plex library index | Redis | 6 hours |
 | Jellyfin library index | Redis | 6 hours |
 | Scheduled-item state | Redis | 30 days |
-| TVHeadend EPG | — | not cached (always live) |
+| EPG (TVHeadend or Plex) | — | not cached (always live) |
+| Plex DVR provider ID | process memory | until restart |
 
 To clear all caches: `docker compose exec redis redis-cli FLUSHDB`  
 To force a Plex re-index: `docker compose exec redis redis-cli del plex:library:all`
@@ -239,7 +248,7 @@ volumes:
 
 `config.yaml` is gitignored — never committed.
 
-If TVHeadend or Plex are accessed via **Tailscale MagicDNS**, add the Tailscale DNS resolver to the compose service:
+If TVHeadend, Plex, or Jellyfin are accessed via **Tailscale MagicDNS**, add the Tailscale DNS resolver to the compose service:
 
 ```yaml
 dns:
@@ -258,8 +267,8 @@ src/
 ├── matching/
 │   ├── normalizer.ts # Deterministic title normalization pipeline
 │   └── engine.ts     # Matching logic + fuzzy fallback
-├── epg/              # EpgProvider interface + TVHeadend adapter
-├── dvr/              # DvrAdapter interface + TVHeadend adapter
+├── epg/              # EpgProvider interface + TVHeadend, Plex adapters
+├── dvr/              # DvrAdapter interface + TVHeadend, Plex adapters
 ├── state/
 │   ├── redis.ts      # Idempotency state store
 │   └── history.ts    # Run history (persisted in Redis)
@@ -290,4 +299,5 @@ Tests cover the normalization pipeline and matching engine. All 20 tests run in 
 - [ ] Manual match override via web UI
 - [ ] Notification on successful schedule (webhook / Apprise)
 - [ ] Series / episode support
-- [ ] Additional DVR backends (Plex DVR, Jellyfin)
+- [x] Plex DVR backend (EPG via Plex Live TV + subscriptions API)
+- [ ] Jellyfin DVR backend
