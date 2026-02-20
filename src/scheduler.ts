@@ -86,6 +86,7 @@ async function run(deps: RunDeps): Promise<void> {
   // 2. Filter: already in library
   let remaining = [...allItems.values()]
   let itemsInLibrary = 0
+  const inLibraryItems: Array<{ imdbId: string; originalTitle: string }> = []
   for (const checker of checkers) {
     const filtered = await Promise.all(
       remaining.map(async (item) => ({
@@ -93,10 +94,11 @@ async function run(deps: RunDeps): Promise<void> {
         inLibrary: await checker.existsInLibrary(item.imdbId).catch(() => false),
       })),
     )
-    const count = filtered.filter((r) => r.inLibrary).length
-    if (count > 0) {
-      console.log(`  [library] Skipping ${count} item(s) already in library`)
-      itemsInLibrary += count
+    const libItems = filtered.filter((r) => r.inLibrary)
+    if (libItems.length > 0) {
+      console.log(`  [library] Skipping ${libItems.length} item(s) already in library`)
+      itemsInLibrary += libItems.length
+      inLibraryItems.push(...libItems.map((r) => ({ imdbId: r.item.imdbId, originalTitle: r.item.originalTitle })))
     }
     remaining = filtered.filter((r) => !r.inLibrary).map((r) => r.item)
   }
@@ -106,6 +108,9 @@ async function run(deps: RunDeps): Promise<void> {
     remaining.map(async (item) => ({ item, scheduled: await state.isScheduled(item.imdbId) })),
   )
   const itemsAlreadyScheduled = stateFiltered.filter((r) => r.scheduled).length
+  const alreadyScheduledItems = stateFiltered
+    .filter((r) => r.scheduled)
+    .map((r) => ({ imdbId: r.item.imdbId, originalTitle: r.item.originalTitle }))
   if (itemsAlreadyScheduled > 0) {
     console.log(`  [state] Skipping ${itemsAlreadyScheduled} item(s) already scheduled`)
   }
@@ -129,6 +134,8 @@ async function run(deps: RunDeps): Promise<void> {
       matches: [],
       ambiguousItems: [],
       unmatchedItems: [],
+      inLibraryItems,
+      alreadyScheduledItems,
     })
     return
   }
@@ -267,6 +274,8 @@ async function run(deps: RunDeps): Promise<void> {
       originalTitle: u.originalTitle,
       year: u.year,
     })),
+    inLibraryItems,
+    alreadyScheduledItems,
   }
   await history.saveRun(record)
 }

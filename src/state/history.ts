@@ -38,6 +38,8 @@ export interface RunRecord {
   matches: RunMatch[]
   ambiguousItems: RunAmbiguous[]
   unmatchedItems: RunUnmatched[]
+  inLibraryItems: Array<{ imdbId: string; originalTitle: string }>
+  alreadyScheduledItems: Array<{ imdbId: string; originalTitle: string }>
 }
 
 const HISTORY_KEY = "history:runs"

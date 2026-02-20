@@ -48,14 +48,32 @@ export function startWebServer(deps: WebDeps, port: number): void {
       .getLastRun()
       .then((last) => {
         if (!last) {
-          res.json({ matches: [], ambiguous: [], unmatched: [] })
+          res.json({ items: [] })
           return
         }
-        res.json({
-          matches: last.matches,
-          ambiguous: last.ambiguousItems,
-          unmatched: last.unmatchedItems,
-        })
+        const items = [
+          ...(last.inLibraryItems ?? []).map((x) => ({ ...x, status: "in_library" as const })),
+          ...(last.alreadyScheduledItems ?? []).map((x) => ({ ...x, status: "already_scheduled" as const })),
+          ...last.matches.map((m) => ({
+            imdbId: m.imdbId,
+            originalTitle: m.originalTitle,
+            status: "matched" as const,
+            match: m,
+          })),
+          ...last.ambiguousItems.map((a) => ({
+            imdbId: a.imdbId,
+            originalTitle: a.originalTitle,
+            status: "ambiguous" as const,
+            reason: a.reason,
+          })),
+          ...last.unmatchedItems.map((u) => ({
+            imdbId: u.imdbId,
+            originalTitle: u.originalTitle,
+            status: "unmatched" as const,
+            year: u.year,
+          })),
+        ]
+        res.json({ items })
       })
       .catch((err: Error) => res.status(500).json({ error: err.message }))
   })
@@ -104,6 +122,8 @@ tr:hover td{background:#1a1a30}
 .badge-fuzzy{background:#713f12;color:#fbbf24}
 .badge-dryrun{background:#1a1a3a;color:#818cf8;border:1px solid #4a4a8a}
 .badge-ambiguous{background:#2a2a1a;color:#fbbf24}
+.badge-library{background:#162a1e;color:#4ade80}
+.badge-noepg{background:#1e1e2a;color:#6b6b8a}
 .sec{font-size:.8rem;font-weight:600;color:#8888aa;text-transform:uppercase;letter-spacing:.08em;margin:1.5rem 0 .6rem}
 .empty{color:#4a4a6a;font-size:.88rem;padding:2.5rem 0;text-align:center}
 .run-card{background:#1a1a30;border:1px solid #2a2a4a;border-radius:6px;padding:.9rem 1.4rem;margin-bottom:.6rem}
@@ -165,50 +185,52 @@ function loadStatus() {
 }
 
 function loadWatchlist() {
-  Promise.all([fetch('/api/watchlist').then(function(r){return r.json()}), fetch('/api/status').then(function(r){return r.json()})]).then(function(results) {
-    var data = results[0];
-    var status = results[1];
-    var last = status.lastRun;
+  fetch('/api/watchlist').then(function(r){return r.json()}).then(function(data) {
+    var items = data.items || [];
+    var counts = {matched:0,in_library:0,already_scheduled:0,ambiguous:0,unmatched:0};
+    items.forEach(function(i){ if(counts[i.status]!==undefined) counts[i.status]++; });
     var stats = [
-      ['Matched', data.matches ? data.matches.length : 0],
-      ['Scheduled', last ? last.scheduled : '&mdash;'],
-      ['Ambiguous', data.ambiguous ? data.ambiguous.length : 0],
-      ['Unmatched', data.unmatched ? data.unmatched.length : 0]
+      ['Total', items.length],
+      ['Matched', counts.matched],
+      ['In Library', counts.in_library],
+      ['Scheduled', counts.already_scheduled],
+      ['Ambiguous', counts.ambiguous],
+      ['No EPG', counts.unmatched]
     ];
     document.getElementById('stat-row').innerHTML = stats.map(function(s) {
       return '<div class="stat-card"><div class="lbl">'+s[0]+'</div><div class="val">'+s[1]+'</div></div>';
     }).join('');
-
-    var html = '';
-    if (data.matches && data.matches.length) {
-      html += '<p class="sec">Matched ('+data.matches.length+')</p>';
-      html += '<table><thead><tr><th>Title</th><th>EPG title</th><th>Channel</th><th>Airtime</th><th>Match</th></tr></thead><tbody>';
-      data.matches.forEach(function(m) {
-        html += '<tr><td>'+esc(m.originalTitle)+' <a href="https://www.imdb.com/title/'+esc(m.imdbId)+'/" target="_blank" rel="noopener">&#x2197;</a></td>';
-        html += '<td>'+esc(m.epgTitle)+'</td><td>'+esc(m.channelName)+'</td>';
-        html += '<td>'+fmtDate(m.startTime)+'</td>';
-        html += '<td><span class="badge badge-'+esc(m.confidence)+'">'+esc(m.confidence)+'</span> <small style="color:#6b6b8a">'+esc(m.matchedLanguage)+'</small></td></tr>';
-      });
-      html += '</tbody></table>';
+    if (!items.length) {
+      document.getElementById('wl-content').innerHTML = '<p class="empty">No data yet &mdash; run the scheduler to populate.</p>';
+      return;
     }
-    if (data.ambiguous && data.ambiguous.length) {
-      html += '<p class="sec">Ambiguous ('+data.ambiguous.length+')</p>';
-      html += '<table><thead><tr><th>Title</th><th>Reason</th></tr></thead><tbody>';
-      data.ambiguous.forEach(function(a) {
-        html += '<tr><td>'+esc(a.originalTitle)+'</td><td><span class="badge badge-ambiguous">ambiguous</span> '+esc(a.reason)+'</td></tr>';
-      });
-      html += '</tbody></table>';
-    }
-    if (data.unmatched && data.unmatched.length) {
-      html += '<p class="sec">No EPG match ('+data.unmatched.length+')</p>';
-      html += '<table><thead><tr><th>Title</th><th>Year</th><th>IMDb</th></tr></thead><tbody>';
-      data.unmatched.forEach(function(u) {
-        html += '<tr><td>'+esc(u.originalTitle)+'</td><td>'+(u.year || '&mdash;')+'</td>';
-        html += '<td><a href="https://www.imdb.com/title/'+esc(u.imdbId)+'/" target="_blank" rel="noopener">'+esc(u.imdbId)+'</a></td></tr>';
-      });
-      html += '</tbody></table>';
-    }
-    if (!html) html = '<p class="empty">No data yet &mdash; run the scheduler to populate.</p>';
+    var order = {matched:0,ambiguous:1,unmatched:2,in_library:3,already_scheduled:4};
+    items.sort(function(a,b){
+      return (order[a.status]||99)-(order[b.status]||99) || a.originalTitle.localeCompare(b.originalTitle);
+    });
+    var html = '<table><thead><tr><th>Title</th><th>Status</th><th>EPG / Channel</th><th>Airtime</th></tr></thead><tbody>';
+    items.forEach(function(item) {
+      var imdbLink = ' <a href="https://www.imdb.com/title/'+esc(item.imdbId)+'/" target="_blank" rel="noopener">&#x2197;</a>';
+      var badge='', epg='&mdash;', airtime='&mdash;';
+      if (item.status==='matched') {
+        badge = '<span class="badge badge-'+esc(item.match.confidence)+'">'+esc(item.match.confidence)+'</span>'
+              + (item.match.matchedLanguage ? ' <small style="color:#6b6b8a">'+esc(item.match.matchedLanguage)+'</small>' : '');
+        epg = esc(item.match.epgTitle)+'<br><small style="color:#6b6b8a">'+esc(item.match.channelName)+'</small>';
+        airtime = fmtDate(item.match.startTime);
+      } else if (item.status==='in_library') {
+        badge = '<span class="badge badge-library">in library</span>';
+      } else if (item.status==='already_scheduled') {
+        badge = '<span class="badge badge-scheduled">scheduled</span>';
+      } else if (item.status==='ambiguous') {
+        badge = '<span class="badge badge-ambiguous">ambiguous</span>';
+        epg = '<small style="color:#8888aa">'+esc(item.reason)+'</small>';
+      } else {
+        badge = '<span class="badge badge-noepg">no EPG</span>';
+        if (item.year) epg = String(item.year);
+      }
+      html += '<tr><td>'+esc(item.originalTitle)+imdbLink+'</td><td>'+badge+'</td><td>'+epg+'</td><td>'+airtime+'</td></tr>';
+    });
+    html += '</tbody></table>';
     document.getElementById('wl-content').innerHTML = html;
   }).catch(function(e) {
     document.getElementById('wl-content').innerHTML = '<p class="err-box">'+esc(String(e))+'</p>';
