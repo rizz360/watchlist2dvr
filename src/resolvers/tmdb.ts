@@ -23,7 +23,9 @@ export class TmdbResolver {
     const cacheKey = `tmdb:titles:${imdbId}`
     const cached = await this.redis.get(cacheKey)
     if (cached) {
-      return JSON.parse(cached) as Record<string, string>
+      const titles = JSON.parse(cached) as Record<string, string>
+      titles["_fromCache"] = "1"
+      return titles
     }
 
     const tmdbId = await this.findTmdbId(imdbId)

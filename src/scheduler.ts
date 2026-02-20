@@ -171,12 +171,16 @@ async function run(deps: RunDeps): Promise<void> {
   console.log(`  [tmdb] Resolving titles for ${remaining.length} item(s)...`)
   const TMDB_CONCURRENCY = 10
   let tmdbDone = 0
+  let tmdbCacheHits = 0
   for (let i = 0; i < remaining.length; i += TMDB_CONCURRENCY) {
     const batch = remaining.slice(i, i + TMDB_CONCURRENCY)
     await Promise.all(
       batch.map(async (item) => {
         try {
-          item.localizedTitles = await tmdb.resolveLocalizedTitles(item.imdbId)
+          const result = await tmdb.resolveLocalizedTitles(item.imdbId)
+          if (result["_fromCache"] === "1") tmdbCacheHits++
+          const { _fromCache: _, ...titles } = result as Record<string, string>
+          item.localizedTitles = titles
         } catch (err) {
           errors.push(`TMDB lookup failed for ${item.imdbId}: ${(err as Error).message}`)
         }
@@ -184,7 +188,7 @@ async function run(deps: RunDeps): Promise<void> {
       }),
     )
     if (tmdbDone % 50 === 0 || tmdbDone === remaining.length) {
-      console.log(`  [tmdb] ${tmdbDone}/${remaining.length} resolved...`)
+      console.log(`  [tmdb] ${tmdbDone}/${remaining.length} resolved... (${tmdbCacheHits} from cache)`)
     }
   }
 
@@ -202,9 +206,7 @@ async function run(deps: RunDeps): Promise<void> {
   console.log(`  [epg] Querying ${titlesToQuery.size} title(s) against EPG...`)
   const epgResults: Awaited<ReturnType<typeof epg.searchByTitle>> = []
   const seenEventIds = new Set<string>()
-  let epgQueryCount = 0
   for (const title of titlesToQuery) {
-    if (epgQueryCount++ > 0) await new Promise((r) => setTimeout(r, 200))
     try {
       const events = await epg.searchByTitle(title)
       for (const e of events) {
