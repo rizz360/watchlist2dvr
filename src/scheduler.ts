@@ -183,6 +183,7 @@ async function run(deps: RunDeps): Promise<void> {
           item.localizedTitles = titles
         } catch (err) {
           errors.push(`TMDB lookup failed for ${item.imdbId}: ${(err as Error).message}`)
+          console.warn(`  [tmdb] Failed to resolve ${item.imdbId}: ${(err as Error).message}`)
         }
         tmdbDone++
       }),

@@ -30,6 +30,8 @@ export class TmdbResolver {
 
     const tmdbId = await this.findTmdbId(imdbId)
     if (!tmdbId) {
+      // Cache the empty result so we don't re-query TMDB on every run
+      await this.redis.set(cacheKey, JSON.stringify({}), "EX", CACHE_TTL_SECONDS)
       return {}
     }
 
