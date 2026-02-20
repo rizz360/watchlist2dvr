@@ -2,6 +2,8 @@ services:
   watchlist2dvr:
     build: .
     restart: unless-stopped
+    dns:
+      - 100.100.100.100  # Tailscale MagicDNS — resolves .ts.net hostnames and peer names
     depends_on:
       redis:
         condition: service_healthy
