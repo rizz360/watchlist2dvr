@@ -213,6 +213,52 @@ Both lookups are Redis-cached for 7 days and fetched 10 at a time.
 
 ---
 
+## Homepage widget
+
+watchlist2dvr exposes a flat `/api/stats` endpoint designed for the [Gethomepage](https://gethomepage.dev) `customapi` widget.
+
+```yaml
+- watchlist2dvr:
+    icon: mdi-television-play
+    href: http://watchlist2dvr:3000
+    widget:
+      type: customapi
+      url: http://watchlist2dvr:3000/api/stats
+      refreshInterval: 300000   # 5 min
+      mappings:
+        - field: total
+          label: Total
+          format: number
+        - field: matched
+          label: Matched
+          format: number
+        - field: scheduled
+          label: Scheduled
+          format: number
+        - field: inLibrary
+          label: In Library
+          format: number
+```
+
+The endpoint returns:
+
+```json
+{
+  "total": 592,
+  "matched": 15,
+  "scheduled": 3,
+  "inLibrary": 120,
+  "ambiguous": 8,
+  "unmatched": 454,
+  "lastRun": "2026-02-20T12:00:00.000Z",
+  "dryRun": false
+}
+```
+
+All eight fields can be used as `field` values in `mappings`.
+
+---
+
 ## Web dashboard
 
 Available at `http://localhost:3000` (or your configured port).

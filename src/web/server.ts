@@ -26,6 +26,38 @@ export function startWebServer(deps: WebDeps, port: number): void {
       .catch((err: Error) => res.status(500).json({ error: err.message }))
   })
 
+  // Flat stats endpoint designed for Homepage / Gethomepage custom API widget
+  app.get("/api/stats", (_req, res) => {
+    deps.history
+      .getLastRun()
+      .then((last) => {
+        if (!last) {
+          res.json({
+            total: 0,
+            matched: 0,
+            scheduled: 0,
+            inLibrary: 0,
+            ambiguous: 0,
+            unmatched: 0,
+            lastRun: null,
+            dryRun: false,
+          })
+          return
+        }
+        res.json({
+          total: last.itemsTotal,
+          matched: last.matchesFound,
+          scheduled: last.scheduled,
+          inLibrary: last.itemsInLibrary,
+          ambiguous: last.ambiguous,
+          unmatched: last.unmatched,
+          lastRun: last.completedAt,
+          dryRun: last.dryRun,
+        })
+      })
+      .catch((err: Error) => res.status(500).json({ error: err.message }))
+  })
+
   app.get("/api/history", (_req, res) => {
     deps.history
       .getRuns(50)
