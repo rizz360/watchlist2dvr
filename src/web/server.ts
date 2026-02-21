@@ -95,6 +95,7 @@ export function startWebServer(deps: WebDeps, port: number): void {
             originalTitle: m.originalTitle,
             localizedTitle: m.localizedTitle,
             source: m.source,
+            listLabel: m.listLabel,
             userRating: m.userRating,
             status: "matched" as const,
             match: m,
@@ -104,6 +105,7 @@ export function startWebServer(deps: WebDeps, port: number): void {
             originalTitle: a.originalTitle,
             localizedTitle: a.localizedTitle,
             source: a.source,
+            listLabel: a.listLabel,
             userRating: a.userRating,
             status: "ambiguous" as const,
             reason: a.reason,
@@ -113,6 +115,7 @@ export function startWebServer(deps: WebDeps, port: number): void {
             originalTitle: u.originalTitle,
             localizedTitle: u.localizedTitle,
             source: u.source,
+            listLabel: u.listLabel,
             userRating: u.userRating,
             status: "unmatched" as const,
             year: u.year,
@@ -261,7 +264,7 @@ a:hover{text-decoration:underline}
 .code-snip{background:#0d0d1a;border:1px solid #2a2a4a;border-radius:6px;padding:.85rem 1.1rem;font-family:monospace;font-size:.78rem;color:#86efac;margin-top:1rem;white-space:pre;line-height:1.7;overflow-x:auto}
 .refresh-btn{background:#2a2a4a;border:none;color:#a78bfa;padding:.4rem 1rem;border-radius:6px;cursor:pointer;font-size:.82rem;transition:background .15s;white-space:nowrap;flex-shrink:0}
 .refresh-btn:hover{background:#3a3a5a}
-.refresh-btn:disabled{opacity:.5;cursor:default}
+.badge-list-pill{display:inline-block;padding:.12rem .45rem;border-radius:4px;font-size:.68rem;font-weight:500;background:#1e1e38;color:#8888cc;margin-left:.3rem;vertical-align:middle}
 </style>
 </head>
 <body>
@@ -271,6 +274,7 @@ a:hover{text-decoration:underline}
 </header>
 <nav>
   <button class="active" onclick="showTab('watchlist',this)">Watchlist</button>
+  <button onclick="showTab('lists',this)">By List</button>
   <button onclick="showTab('upcoming',this)">Upcoming</button>
   <button onclick="showTab('history',this)">History</button>
   <button onclick="showTab('debug',this)">Debug</button>
@@ -286,7 +290,14 @@ a:hover{text-decoration:underline}
       <button class="fbtn" id="fbtn-ambiguous" onclick="setFilter('ambiguous',this)">Ambiguous</button>
       <button class="fbtn" id="fbtn-unmatched" onclick="setFilter('unmatched',this)">No EPG</button>
     </div>
+    <div class="filter-bar" id="list-filter-bar" style="display:none">
+      <span style="font-size:.72rem;color:#6b6b8a;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">List:</span>
+      <button class="fbtn active" id="lfbtn-all" onclick="setListFilter(null,this)">All lists</button>
+    </div>
     <div id="wl-content"><p class="empty">Loading&hellip;</p></div>
+  </div>
+  <div id="tab-lists" class="tab">
+    <div id="lists-content"><p class="empty">Loading&hellip;</p></div>
   </div>
   <div id="tab-upcoming" class="tab">
     <div id="up-content"><p class="empty">Loading&hellip;</p></div>
@@ -357,10 +368,18 @@ function loadStatus() {
 
 var wlAllItems = [];
 var wlActiveFilter = 'all';
+var wlActiveList = null; // null = all lists
 
 function setFilter(status, btn) {
   wlActiveFilter = status;
-  document.querySelectorAll('.fbtn').forEach(function(b){b.classList.remove('active')});
+  document.querySelectorAll('#tab-watchlist .fbtn:not([data-list])').forEach(function(b){b.classList.remove('active')});
+  btn.classList.add('active');
+  renderWatchlist();
+}
+
+function setListFilter(label, btn) {
+  wlActiveList = label;
+  document.querySelectorAll('[data-list]').forEach(function(b){b.classList.remove('active')});
   btn.classList.add('active');
   renderWatchlist();
 }
@@ -369,10 +388,57 @@ function filterWatchlist() {
   renderWatchlist();
 }
 
+function buildListFilterBar(items) {
+  var labels = [];
+  var seen = {};
+  items.forEach(function(item) {
+    var l = item.listLabel || null;
+    if (l && !seen[l]) { seen[l] = true; labels.push(l); }
+  });
+  var bar = document.getElementById('list-filter-bar');
+  if (labels.length < 2) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  var html = '<span style="font-size:.72rem;color:#6b6b8a;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">List:</span>';
+  html += '<button class="fbtn'+(wlActiveList===null?' active':'')+'" data-list="__all__" onclick="setListFilter(null,this)">All lists</button>';
+  labels.forEach(function(l) {
+    html += '<button class="fbtn'+(wlActiveList===l?' active':'')+'" data-list="'+esc(l)+'" onclick="setListFilter(this.dataset.list,this)">'+esc(l)+'</button>';
+  });
+  bar.innerHTML = html;
+}
+
+function itemRow(item) {
+  var listPill = item.listLabel ? '<span class="badge-list-pill">'+esc(item.listLabel)+'</span>' : '';
+  var displayTitle = (item.localizedTitle && item.localizedTitle !== item.originalTitle)
+    ? esc(item.localizedTitle) + listPill + '<br><small style="color:#6b6b8a">' + esc(item.originalTitle) + '</small>'
+    : esc(item.originalTitle) + listPill;
+  var imdbLink = ' <a href="https://www.imdb.com/title/'+esc(item.imdbId)+'/" target="_blank" rel="noopener">&#x2197;</a>';
+  var ratingHtml = item.userRating ? '<span class="badge badge-rating">&#9733; '+item.userRating+'</span>' : '&mdash;';
+  var badge='', epg='&mdash;', airtime='&mdash;';
+  var rowClass = item.status === 'in_library' ? ' class="tr-library"' : '';
+  if (item.status==='matched') {
+    badge = '<span class="badge badge-'+esc(item.match.confidence)+'">'+esc(item.match.confidence)+'</span>'
+          + (item.match.matchedLanguage ? ' <small style="color:#6b6b8a">'+esc(item.match.matchedLanguage)+'</small>' : '');
+    epg = esc(item.match.epgTitle)+'<br><small style="color:#6b6b8a">'+esc(item.match.channelName)+'</small>';
+    airtime = fmtDate(item.match.startTime);
+  } else if (item.status==='in_library') {
+    badge = '<span class="badge badge-library">&#10003; in library</span>';
+  } else if (item.status==='already_scheduled') {
+    badge = '<span class="badge badge-scheduled">scheduled</span>';
+  } else if (item.status==='ambiguous') {
+    badge = '<span class="badge badge-ambiguous">ambiguous</span>';
+    epg = '<small style="color:#8888aa">'+esc(item.reason)+'</small>';
+  } else {
+    badge = '<span class="badge badge-noepg">no EPG</span>';
+    if (item.year) epg = String(item.year);
+  }
+  return '<tr'+rowClass+'><td>'+displayTitle+imdbLink+'</td><td>'+ratingHtml+'</td><td>'+badge+'</td><td>'+epg+'</td><td>'+airtime+'</td></tr>';
+}
+
 function renderWatchlist() {
   var query = (document.getElementById('wl-search').value || '').toLowerCase().trim();
   var items = wlAllItems.filter(function(item) {
     if (wlActiveFilter !== 'all' && item.status !== wlActiveFilter) return false;
+    if (wlActiveList !== null && item.listLabel !== wlActiveList) return false;
     if (query) {
       var haystack = (item.originalTitle + ' ' + (item.localizedTitle || '')).toLowerCase();
       return haystack.indexOf(query) !== -1;
@@ -384,34 +450,47 @@ function renderWatchlist() {
     return;
   }
   var html = '<table><thead><tr><th>Title</th><th>Rating</th><th>Status</th><th>EPG / Channel</th><th>Airtime</th></tr></thead><tbody>';
-  items.forEach(function(item) {
-    var displayTitle = (item.localizedTitle && item.localizedTitle !== item.originalTitle)
-      ? esc(item.localizedTitle) + '<br><small style="color:#6b6b8a">' + esc(item.originalTitle) + '</small>'
-      : esc(item.originalTitle);
-    var imdbLink = ' <a href="https://www.imdb.com/title/'+esc(item.imdbId)+'/" target="_blank" rel="noopener">&#x2197;</a>';
-    var ratingHtml = item.userRating ? '<span class="badge badge-rating">&#9733; '+item.userRating+'</span>' : '&mdash;';
-    var badge='', epg='&mdash;', airtime='&mdash;';
-    var rowClass = item.status === 'in_library' ? ' class="tr-library"' : '';
-    if (item.status==='matched') {
-      badge = '<span class="badge badge-'+esc(item.match.confidence)+'">'+esc(item.match.confidence)+'</span>'
-            + (item.match.matchedLanguage ? ' <small style="color:#6b6b8a">'+esc(item.match.matchedLanguage)+'</small>' : '');
-      epg = esc(item.match.epgTitle)+'<br><small style="color:#6b6b8a">'+esc(item.match.channelName)+'</small>';
-      airtime = fmtDate(item.match.startTime);
-    } else if (item.status==='in_library') {
-      badge = '<span class="badge badge-library">&#10003; in library</span>';
-    } else if (item.status==='already_scheduled') {
-      badge = '<span class="badge badge-scheduled">scheduled</span>';
-    } else if (item.status==='ambiguous') {
-      badge = '<span class="badge badge-ambiguous">ambiguous</span>';
-      epg = '<small style="color:#8888aa">'+esc(item.reason)+'</small>';
-    } else {
-      badge = '<span class="badge badge-noepg">no EPG</span>';
-      if (item.year) epg = String(item.year);
-    }
-    html += '<tr'+rowClass+'><td>'+displayTitle+imdbLink+'</td><td>'+ratingHtml+'</td><td>'+badge+'</td><td>'+epg+'</td><td>'+airtime+'</td></tr>';
-  });
+  items.forEach(function(item) { html += itemRow(item); });
   html += '</tbody></table>';
   document.getElementById('wl-content').innerHTML = html;
+}
+
+function renderLists() {
+  var el = document.getElementById('lists-content');
+  if (!wlAllItems.length) {
+    el.innerHTML = '<p class="empty">No data yet &mdash; run the scheduler to populate.</p>';
+    return;
+  }
+  // Group items by listLabel (undefined → "Unknown")
+  var groups = {};
+  var groupOrder = [];
+  wlAllItems.forEach(function(item) {
+    var label = item.listLabel || 'Unknown';
+    if (!groups[label]) { groups[label] = []; groupOrder.push(label); }
+    groups[label].push(item);
+  });
+  var html = '';
+  groupOrder.forEach(function(label) {
+    var items = groups[label];
+    var counts = {matched:0,in_library:0,already_scheduled:0,ambiguous:0,unmatched:0};
+    items.forEach(function(i){ if(counts[i.status]!==undefined) counts[i.status]++; });
+    html += '<div style="margin-bottom:2.5rem">';
+    html += '<div style="display:flex;align-items:baseline;gap:1rem;margin-bottom:.8rem">';
+    html += '<h2 style="font-size:1rem;font-weight:600;color:#a78bfa">'+esc(label)+'</h2>';
+    html += '<span style="font-size:.78rem;color:#6b6b8a">'+items.length+' items &mdash; ';
+    var parts = [];
+    if(counts.matched) parts.push('<span style="color:#60a5fa">'+counts.matched+' matched</span>');
+    if(counts.in_library) parts.push('<span style="color:#4ade80">'+counts.in_library+' in library</span>');
+    if(counts.already_scheduled) parts.push('<span style="color:#60a5fa">'+counts.already_scheduled+' scheduled</span>');
+    if(counts.ambiguous) parts.push('<span style="color:#fbbf24">'+counts.ambiguous+' ambiguous</span>');
+    if(counts.unmatched) parts.push('<span style="color:#6b6b8a">'+counts.unmatched+' no EPG</span>');
+    html += parts.join(', ')+'</span>';
+    html += '</div>';
+    html += '<table><thead><tr><th>Title</th><th>Rating</th><th>Status</th><th>EPG / Channel</th><th>Airtime</th></tr></thead><tbody>';
+    items.forEach(function(item) { html += itemRow(item); });
+    html += '</tbody></table></div>';
+  });
+  el.innerHTML = html;
 }
 
 function loadWatchlist() {
@@ -439,7 +518,9 @@ function loadWatchlist() {
       return (order[a.status]||99)-(order[b.status]||99) || a.originalTitle.localeCompare(b.originalTitle);
     });
     wlAllItems = items;
+    buildListFilterBar(items);
     renderWatchlist();
+    renderLists();
   }).catch(function(e) {
     document.getElementById('wl-content').innerHTML = '<p class="err-box">'+esc(String(e))+'</p>';
   });
@@ -549,7 +630,7 @@ function loadSources() {
       html += '<div class="src-meta">'+icon+' '+esc(when)+count+'</div>';
       html += errLine;
       html += '</div>';
-      html += '<button class="refresh-btn" id="refresh-btn-'+esc(s.userId)+'" onclick="refreshImdbSource(\'' + esc(s.userId) + '\')">Refresh</button>';
+      html += '<button class="refresh-btn" id="refresh-btn-'+esc(s.userId)+'" data-user-id="'+esc(s.userId)+'" onclick="refreshImdbSource(this.dataset.userId)">Refresh</button>';
       html += '</div>';
     });
     el.innerHTML = html;

@@ -32,6 +32,7 @@ Every layer is a swappable adapter. The matching engine never knows which source
 
 ## Features
 
+- **IMDb public lists (no auth)** — the `imdb_public_lists` source fetches any public IMDb URL (Top 250, MovieMeter, Popular, public user lists) by parsing the embedded Next.js page data. No cookie or account required. Just point it at one or more URLs.
 - **IMDb watchlist + ratings (auto-download)** — the `imdb_auto` source fetches your watchlist and ratings CSV directly from IMDb using a session cookie. No browser automation, no Python, no file management — just paste your `at-main` cookie. See [IMDb auto-download](#imdb-auto-download) below.
 - **IMDb watchlist + ratings (manual CSV)** — point `path` at a directory; all CSVs are loaded automatically. Ratings CSVs filter by `min_rating`. Only Movies and TV Movies are processed (video games, shorts, and series are skipped).
 - **Localized title matching** — resolves titles in your preferred language via TMDB (e.g. German, French, …)
@@ -59,7 +60,7 @@ mkdir -p data
 
 You have two options:
 
-**Option A — Auto-download (recommended)**
+**Option A — Auto-download (recommended for personal watchlist + ratings)**
 
 The `imdb_auto` source fetches your watchlist and ratings directly. You only need one value from your browser:
 
@@ -68,8 +69,6 @@ The `imdb_auto` source fetches your watchlist and ratings directly. You only nee
 3. **Application** tab → **Storage** → **Cookies** → `https://www.imdb.com`
 4. Find the row where **Name** = `at-main` → copy its **Value**
 5. Your user ID is the `urXXXXXXX` part of your IMDb profile URL
-
-Configuring it in `config.yaml`:
 
 ```yaml
 sources:
@@ -84,7 +83,20 @@ sources:
 
 The cookie expires when you log out of IMDb. The **Sources** tab in the web dashboard shows the last fetch status and has a **Refresh** button to re-check without restarting the service. When the cookie expires, re-copy `at-main` from DevTools and update `config.yaml`.
 
-**Option B — Manual CSV export**
+**Option B — Public lists (no account required)**
+
+The `imdb_public_lists` source works with any public IMDb URL — no cookies, no account:
+
+```yaml
+sources:
+  - type: imdb_public_lists
+    lists:
+      - https://www.imdb.com/chart/top/        # IMDb Top 250
+      - https://www.imdb.com/chart/popular/
+      - https://www.imdb.com/list/ls000024621/ # any public user list
+```
+
+**Option C — Manual CSV export**
 
 - **Watchlist**: [imdb.com/list/watchlist](https://www.imdb.com/list/watchlist) → Export
 - **Ratings** (optional): [imdb.com/user/ur.../ratings](https://www.imdb.com/user/) → Export
@@ -153,6 +165,14 @@ sources:
     min_rating: 1           # skip rated movies below this score (1–10)
     # poll_timeout_seconds: 120   # optional: max wait for IMDb export (default: 120)
     # poll_interval_seconds: 4    # optional: polling cadence in seconds (default: 4)
+
+  # Public lists: no authentication needed.
+  # Any public IMDb URL: charts (Top 250, Popular, MovieMeter) or public user lists.
+  # - type: imdb_public_lists
+  #   lists:
+  #     - https://www.imdb.com/chart/top/        # IMDb Top 250
+  #     - https://www.imdb.com/chart/popular/
+  #     - https://www.imdb.com/list/ls000024621/ # public user list
 
   # Manual CSV: drop exported files into a directory.
   # - type: imdb_csv
@@ -437,6 +457,7 @@ Tests cover the normalization pipeline and matching engine. All 20 tests run in 
 ## Roadmap
 
 - [x] IMDb auto-download via session cookie (`imdb_auto` source)
+- [x] Public IMDb lists — charts and public user lists (`imdb_public_lists` source)
 - [ ] Trakt OAuth flow (currently public watchlist / API key only)
 - [ ] Manual match override via web UI
 - [ ] Notification on successful schedule (webhook / Apprise)

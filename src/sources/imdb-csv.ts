@@ -139,7 +139,10 @@ export class ImdbCsvSource implements WatchlistSource {
       for (const item of parseImdbLines(lines, this.minRating)) {
         if (!seen.has(item.imdbId)) {
           seen.add(item.imdbId)
-          items.push(item)
+          items.push({
+            ...item,
+            listLabel: item.source === "rating" ? "IMDb Ratings (CSV)" : "IMDb Watchlist (CSV)",
+          })
         }
       }
     }

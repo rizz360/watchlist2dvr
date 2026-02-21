@@ -4,6 +4,16 @@ sources:
     client_secret: "YOUR_TRAKT_CLIENT_SECRET"
     username: "YOUR_TRAKT_USERNAME"
 
+  # --- IMDb Public Lists ---
+  # Fetch any number of public IMDb URLs per run — no authentication required.
+  # Supported: charts (Top 250, Popular, MovieMeter) and public user lists.
+  #
+  # - type: imdb_public_lists
+  #   lists:
+  #     - https://www.imdb.com/chart/top/        # IMDb Top 250
+  #     - https://www.imdb.com/chart/popular/    # Most popular right now
+  #     - https://www.imdb.com/list/ls000024621/ # Any public user list
+
   # --- IMDb Auto-download ---
   # Directly downloads your IMDb watchlist and/or ratings as CSV using a
   # session cookie — no browser automation or Python required.

@@ -41,6 +41,7 @@ export class TraktSource implements WatchlistSource {
         year: entry.movie.year,
         addedAt: new Date(entry.listed_at),
         source: "watchlist" as const,
+        listLabel: "Trakt Watchlist",
       }))
   }
 }

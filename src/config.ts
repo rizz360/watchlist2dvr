@@ -15,6 +15,12 @@ const ImdbCsvSourceSchema = z.object({
   min_rating: z.number().int().min(0).max(10).default(0),
 })
 
+const ImdbPublicListsSourceSchema = z.object({
+  type: z.literal("imdb_public_lists"),
+  /** One or more public IMDb URLs (charts, user lists). Each is fetched once per run. */
+  lists: z.array(z.string().url()).min(1),
+})
+
 const ImdbAutoSourceSchema = z.object({
   type: z.literal("imdb_auto"),
   /** IMDb user ID, e.g. "ur12345678" — visible in your IMDb profile URL. */
@@ -37,6 +43,7 @@ const SourceSchema = z.discriminatedUnion("type", [
   TraktSourceSchema,
   ImdbCsvSourceSchema,
   ImdbAutoSourceSchema,
+  ImdbPublicListsSourceSchema,
 ])
 
 const LibraryJellyfinSchema = z.object({

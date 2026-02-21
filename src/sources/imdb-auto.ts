@@ -322,7 +322,10 @@ export class ImdbAutoSource implements WatchlistSource {
             `The pre-signed URL may have expired — try re-fetching.`,
         )
       }
-      const items = parseImdbCsvText(res.data, this.minRating)
+      const items = parseImdbCsvText(res.data, this.minRating).map((item) => ({
+        ...item,
+        listLabel: name === "watchlist" ? "IMDb Watchlist" : "IMDb Ratings",
+      }))
       console.log(`  [imdb-auto] ${name}: ${items.length} items`)
       for (const item of items) {
         if (!seen.has(item.imdbId)) {

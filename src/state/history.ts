@@ -4,7 +4,8 @@ export interface RunMatch {
   imdbId: string
   originalTitle: string
   localizedTitle?: string
-  source: "watchlist" | "rating"
+  source: "watchlist" | "rating" | "list"
+  listLabel?: string
   userRating?: number
   epgTitle: string
   channelName: string
@@ -17,7 +18,8 @@ export interface RunAmbiguous {
   imdbId: string
   originalTitle: string
   localizedTitle?: string
-  source: "watchlist" | "rating"
+  source: "watchlist" | "rating" | "list"
+  listLabel?: string
   userRating?: number
   reason: string
 }
@@ -26,7 +28,8 @@ export interface RunUnmatched {
   imdbId: string
   originalTitle: string
   localizedTitle?: string
-  source: "watchlist" | "rating"
+  source: "watchlist" | "rating" | "list"
+  listLabel?: string
   userRating?: number
   year?: number
 }
@@ -47,8 +50,8 @@ export interface RunRecord {
   matches: RunMatch[]
   ambiguousItems: RunAmbiguous[]
   unmatchedItems: RunUnmatched[]
-  inLibraryItems: Array<{ imdbId: string; originalTitle: string; source: "watchlist" | "rating"; userRating?: number }>
-  alreadyScheduledItems: Array<{ imdbId: string; originalTitle: string; source: "watchlist" | "rating"; userRating?: number }>
+  inLibraryItems: Array<{ imdbId: string; originalTitle: string; source: "watchlist" | "rating" | "list"; listLabel?: string; userRating?: number }>
+  alreadyScheduledItems: Array<{ imdbId: string; originalTitle: string; source: "watchlist" | "rating" | "list"; listLabel?: string; userRating?: number }>
 }
 
 const HISTORY_KEY = "history:runs"

@@ -6,6 +6,7 @@ import { loadConfig, type Config } from "./config.js"
 import { TraktSource } from "./sources/trakt.js"
 import { ImdbCsvSource } from "./sources/imdb-csv.js"
 import { ImdbAutoSource } from "./sources/imdb-auto.js"
+import { ImdbPublicListsSource } from "./sources/imdb-public-lists.js"
 import type { WatchlistSource, WatchlistItem } from "./sources/index.js"
 import { JellyfinLibraryChecker } from "./library/jellyfin.js"
 import { PlexLibraryChecker } from "./library/plex.js"
@@ -54,6 +55,7 @@ function buildDeps(config: Config, redis: Redis): RunDeps {
         // Reuse the already-constructed instance so status is shared
         return imdbAutoSources.find((inst) => inst.getStatus().userId === s.user_id)!
       }
+      if (s.type === "imdb_public_lists") return new ImdbPublicListsSource(s.lists)
       return new ImdbCsvSource(s.path, s.min_rating)
     }),
     checkers:
@@ -110,7 +112,7 @@ async function run(deps: RunDeps): Promise<void> {
   // 2. Filter: already in library
   let remaining = [...allItems.values()]
   let itemsInLibrary = 0
-  const inLibraryItems: Array<{ imdbId: string; originalTitle: string; source: "watchlist" | "rating"; userRating?: number }> = []
+  const inLibraryItems: Array<{ imdbId: string; originalTitle: string; source: "watchlist" | "rating" | "list"; userRating?: number }> = []
   for (const checker of checkers) {
     console.log(`  [library] Checking ${remaining.length} item(s) against library...`)
     const results = await Promise.all(
@@ -127,6 +129,7 @@ async function run(deps: RunDeps): Promise<void> {
         imdbId: r.item.imdbId,
         originalTitle: r.item.originalTitle,
         source: r.item.source,
+        listLabel: r.item.listLabel,
         userRating: r.item.userRating,
       })))
     }
@@ -152,6 +155,7 @@ async function run(deps: RunDeps): Promise<void> {
       imdbId: r.item.imdbId,
       originalTitle: r.item.originalTitle,
       source: r.item.source,
+      listLabel: r.item.listLabel,
       userRating: r.item.userRating,
     }))
   if (itemsAlreadyScheduled > 0) {
@@ -331,6 +335,7 @@ async function run(deps: RunDeps): Promise<void> {
       originalTitle: m.item.originalTitle,
       localizedTitle: m.item.localizedTitles[config.matching.preferred_language],
       source: m.item.source,
+      listLabel: m.item.listLabel,
       userRating: m.item.userRating,
       epgTitle: m.event.title,
       channelName: m.event.channelName,
@@ -343,6 +348,7 @@ async function run(deps: RunDeps): Promise<void> {
       originalTitle: a.item.originalTitle,
       localizedTitle: a.item.localizedTitles[config.matching.preferred_language],
       source: a.item.source,
+      listLabel: a.item.listLabel,
       userRating: a.item.userRating,
       reason: a.reason,
     })),
@@ -351,6 +357,7 @@ async function run(deps: RunDeps): Promise<void> {
       originalTitle: u.originalTitle,
       localizedTitle: u.localizedTitles[config.matching.preferred_language],
       source: u.source,
+      listLabel: u.listLabel,
       userRating: u.userRating,
       year: u.year,
     })),
