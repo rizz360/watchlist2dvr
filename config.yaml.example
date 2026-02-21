@@ -4,7 +4,34 @@ sources:
     client_secret: "YOUR_TRAKT_CLIENT_SECRET"
     username: "YOUR_TRAKT_USERNAME"
 
-  # Uncomment to use IMDb CSV export instead (or in addition):
+  # --- IMDb Auto-download ---
+  # Directly downloads your IMDb watchlist and/or ratings as CSV using a
+  # session cookie — no browser automation or Python required.
+  #
+  # How to get your cookie (takes ~1 minute):
+  #   1. Go to https://www.imdb.com and sign in
+  #   2. Open DevTools: F12 (Windows/Linux) or Cmd+Option+I (Mac)
+  #   3. Application tab → Storage → Cookies → https://www.imdb.com
+  #   4. Find "at-main" → copy its Value (a long URL-encoded string)
+  #
+  # Your user ID is the "urXXXXXXX" part of your IMDb profile URL:
+  #   https://www.imdb.com/user/ur12345678/
+  #
+  # The cookie expires when you log out. If fetching breaks, re-copy it
+  # from DevTools and restart the service. The Sources tab in the web UI
+  # shows the last fetch status and lets you trigger a manual refresh.
+  #
+  # - type: imdb_auto
+  #   user_id: "ur12345678"
+  #   cookie: "YOUR_AT_MAIN_COOKIE_VALUE"
+  #   lists:
+  #     - watchlist    # movies you've marked "Want to See"
+  #     - ratings      # movies you've rated on IMDb
+  #   min_rating: 1   # for ratings: skip movies rated below this (1–10)
+  #   poll_timeout_seconds: 120   # optional: max wait for IMDb export (default: 120)
+  #   poll_interval_seconds: 4    # optional: polling cadence in seconds (default: 4)
+
+  # --- IMDb CSV (manual export) ---
   # Drop any IMDb export CSV (watchlist, ratings, etc.) into the directory —
   # type is auto-detected by headers.
   # - type: imdb_csv

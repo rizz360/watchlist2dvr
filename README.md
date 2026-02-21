@@ -32,7 +32,8 @@ Every layer is a swappable adapter. The matching engine never knows which source
 
 ## Features
 
-- **IMDb watchlist + ratings** — point `path` at a directory; all CSVs are loaded automatically. Ratings CSVs filter by `min_rating`. Only Movies and TV Movies are processed (video games, shorts, and series are skipped).
+- **IMDb watchlist + ratings (auto-download)** — the `imdb_auto` source fetches your watchlist and ratings CSV directly from IMDb using a session cookie. No browser automation, no Python, no file management — just paste your `at-main` cookie. See [IMDb auto-download](#imdb-auto-download) below.
+- **IMDb watchlist + ratings (manual CSV)** — point `path` at a directory; all CSVs are loaded automatically. Ratings CSVs filter by `min_rating`. Only Movies and TV Movies are processed (video games, shorts, and series are skipped).
 - **Localized title matching** — resolves titles in your preferred language via TMDB (e.g. German, French, …)
 - **Library check** — skips movies already in Plex or Jellyfin. The entire library is fetched once and indexed as an in-memory Set — no per-item HTTP requests.
 - **Deterministic matching** — lowercase → strip articles → strip editions → strip year suffixes → year filter. Fuzzy matching is opt-in fallback only. Multiple airings of the same movie resolve to the earliest broadcast.
@@ -54,12 +55,41 @@ cd watchlist2dvr
 mkdir -p data
 ```
 
-### 2. Export your IMDb data
+### 2. Get your IMDb data into the service
+
+You have two options:
+
+**Option A — Auto-download (recommended)**
+
+The `imdb_auto` source fetches your watchlist and ratings directly. You only need one value from your browser:
+
+1. Go to [imdb.com](https://www.imdb.com) and sign in
+2. Open DevTools: `F12` on Windows/Linux · `Cmd+Option+I` on Mac
+3. **Application** tab → **Storage** → **Cookies** → `https://www.imdb.com`
+4. Find the row where **Name** = `at-main` → copy its **Value**
+5. Your user ID is the `urXXXXXXX` part of your IMDb profile URL
+
+Configuring it in `config.yaml`:
+
+```yaml
+sources:
+  - type: imdb_auto
+    user_id: "ur12345678"
+    cookie: "YOUR_AT_MAIN_COOKIE_VALUE"
+    lists:
+      - watchlist
+      - ratings
+    min_rating: 1
+```
+
+The cookie expires when you log out of IMDb. The **Sources** tab in the web dashboard shows the last fetch status and has a **Refresh** button to re-check without restarting the service. When the cookie expires, re-copy `at-main` from DevTools and update `config.yaml`.
+
+**Option B — Manual CSV export**
 
 - **Watchlist**: [imdb.com/list/watchlist](https://www.imdb.com/list/watchlist) → Export
 - **Ratings** (optional): [imdb.com/user/ur.../ratings](https://www.imdb.com/user/) → Export
 
-Drop both CSV files into the `data/` directory. The source auto-detects which is which by inspecting the headers. Ratings entries below `min_rating` are ignored.
+Drop both CSV files into the `data/` directory. The source auto-detects which is which by inspecting the headers.
 
 ### 3. Configure
 
@@ -111,9 +141,23 @@ docker compose up -d --build
 ```yaml
 # --- Watchlist sources (at least one required) ---
 sources:
-  - type: imdb_csv
-    path: /data             # directory — all .csv files are loaded automatically
-    min_rating: 5           # for ratings CSVs: only include movies rated ≥ this
+  # Auto-download: fetches directly from IMDb using a session cookie.
+  # Cookie = value of "at-main" from DevTools → Application → Cookies.
+  # The Sources tab in the web UI shows last fetch status + manual refresh button.
+  - type: imdb_auto
+    user_id: "ur12345678"   # urXXXXXXX from your IMDb profile URL
+    cookie: ""              # at-main cookie value from your browser
+    lists:
+      - watchlist           # movies you've marked "Want to See"
+      - ratings             # movies you've rated on IMDb
+    min_rating: 1           # skip rated movies below this score (1–10)
+    # poll_timeout_seconds: 120   # optional: max wait for IMDb export (default: 120)
+    # poll_interval_seconds: 4    # optional: polling cadence in seconds (default: 4)
+
+  # Manual CSV: drop exported files into a directory.
+  # - type: imdb_csv
+  #   path: /data           # directory — all .csv files are loaded automatically
+  #   min_rating: 5         # for ratings CSVs: only include movies rated ≥ this
 
   # - type: trakt
   #   client_id: ""
@@ -213,6 +257,42 @@ Both lookups are Redis-cached for 7 days and fetched 10 at a time.
 
 ---
 
+## IMDb auto-download
+
+The `imdb_auto` source uses the same async export pipeline that IMDb's own web app uses — fully GraphQL-driven. No direct download URLs exist; the export is a background job on IMDb's side.
+
+### How it works
+
+1. **Session warm-up** — visits the IMDb homepage and your watchlist page to acquire the full set of session cookies (`session-id`, `session-token`, `ubid-main`, etc.) that the GraphQL API requires alongside `at-main`.
+2. **List ID discovery** — parses the watchlist page to find your watchlist's internal list ID (e.g. `ls056610540`).
+3. **Trigger exports** — calls two GraphQL mutations:
+   - `createListExport` — queues a watchlist CSV job
+   - `createRatingsExport` — queues a ratings CSV job
+4. **Poll for completion** — calls `getExports` every few seconds until each export reaches status `READY` (typically 10–30 seconds).
+5. **Download** — fetches the CSV files from the time-limited pre-signed S3 URLs that IMDb provides.
+
+### Getting the cookie
+
+| Step | Action |
+|---|---|
+| 1 | Go to [imdb.com](https://www.imdb.com) and sign in |
+| 2 | Open DevTools: `F12` (Windows/Linux) · `Cmd+Option+I` (Mac) |
+| 3 | **Application** → **Storage** → **Cookies** → `https://www.imdb.com` |
+| 4 | Find **`at-main`** → copy the full **Value** (a long URL-encoded string) |
+| 5 | Find your user ID in your profile URL: `imdb.com/user/`**`ur12345678`**`/` |
+
+Paste both into `config.yaml` and restart. The service handles the full export flow — session warm-up, GraphQL mutations, polling, and S3 download — automatically.
+
+### Cookie expiry
+
+The `at-main` cookie expires when you log out of IMDb. When it does:
+
+- The **Sources** tab in the web UI will show the error and when it happened
+- The **Refresh** button lets you trigger a retry after you've updated `config.yaml` with a fresh cookie — no restart required
+- The rest of the service (matching, scheduling, Trakt, CSV) continues to work normally
+
+---
+
 ## Homepage widget
 
 watchlist2dvr exposes a flat `/api/stats` endpoint designed for the [Gethomepage](https://gethomepage.dev) `customapi` widget.
@@ -265,10 +345,11 @@ Available at `http://localhost:3000` (or your configured port).
 
 | Tab | Content |
 |---|---|
-| **Watchlist** | All 592+ items from the last run — matched, scheduled, in-library, and unmatched, with IMDb links, user ratings, and source badges. Filterable by status and searchable by title. |
+| **Watchlist** | All items from the last run — matched, scheduled, in-library, and unmatched, with IMDb links, user ratings, and source badges. Filterable by status and searchable by title. |
 | **Upcoming** | Live DVR queue (TVHeadend or Plex subscriptions), filtered to scheduled/recording, sorted by creation time |
 | **History** | Last 50 runs — item counts, scheduled count, errors, dry-run indicator |
 | **Debug** | TMDB cache size by key prefix, live IMDb ID lookup |
+| **Sources** | Status of each `imdb_auto` source (last fetch time, item count, errors) + refresh button + step-by-step cookie guide |
 
 ---
 
@@ -321,7 +402,7 @@ dns:
 
 ```
 src/
-├── sources/          # WatchlistSource interface + Trakt, IMDb CSV adapters
+├── sources/          # WatchlistSource interface + Trakt, IMDb CSV, IMDb auto-download adapters
 ├── library/          # LibraryChecker interface + Plex, Jellyfin adapters
 ├── resolvers/        # TMDB localization resolver (Redis-cached)
 ├── matching/
@@ -355,6 +436,7 @@ Tests cover the normalization pipeline and matching engine. All 20 tests run in 
 
 ## Roadmap
 
+- [x] IMDb auto-download via session cookie (`imdb_auto` source)
 - [ ] Trakt OAuth flow (currently public watchlist / API key only)
 - [ ] Manual match override via web UI
 - [ ] Notification on successful schedule (webhook / Apprise)

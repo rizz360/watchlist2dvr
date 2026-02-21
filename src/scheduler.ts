@@ -5,6 +5,7 @@ import http from "http"
 import { loadConfig, type Config } from "./config.js"
 import { TraktSource } from "./sources/trakt.js"
 import { ImdbCsvSource } from "./sources/imdb-csv.js"
+import { ImdbAutoSource } from "./sources/imdb-auto.js"
 import type { WatchlistSource, WatchlistItem } from "./sources/index.js"
 import { JellyfinLibraryChecker } from "./library/jellyfin.js"
 import { PlexLibraryChecker } from "./library/plex.js"
@@ -27,6 +28,7 @@ interface RunDeps {
   history: HistoryStore
   tmdb: TmdbResolver
   sources: WatchlistSource[]
+  imdbAutoSources: ImdbAutoSource[]
   checkers: LibraryChecker[]
   epg: EpgProvider
   dvr: DvrAdapter
@@ -34,13 +36,24 @@ interface RunDeps {
 }
 
 function buildDeps(config: Config, redis: Redis): RunDeps {
+  // Instantiate ImdbAutoSource objects once so both the run loop and the web
+  // server share the same instances (status tracking, refresh button).
+  const imdbAutoSources = config.sources
+    .filter((s): s is Extract<typeof s, { type: "imdb_auto" }> => s.type === "imdb_auto")
+    .map((s) => new ImdbAutoSource(s.user_id, s.cookie, s.lists, s.min_rating, s.poll_timeout_seconds * 1000, s.poll_interval_seconds * 1000))
+
   return {
     config,
     state: new StateStore(redis),
     history: new HistoryStore(redis),
     tmdb: new TmdbResolver(config.tmdb.api_key, redis),
+    imdbAutoSources,
     sources: config.sources.map((s) => {
       if (s.type === "trakt") return new TraktSource(s.client_id, s.username)
+      if (s.type === "imdb_auto") {
+        // Reuse the already-constructed instance so status is shared
+        return imdbAutoSources.find((inst) => inst.getStatus().userId === s.user_id)!
+      }
       return new ImdbCsvSource(s.path, s.min_rating)
     }),
     checkers:
@@ -435,7 +448,10 @@ async function main(): Promise<void> {
   const deps = buildDeps(config, redis)
 
   if (config.web.enabled) {
-    startWebServer({ dvr: deps.dvr, history: deps.history, redis }, config.web.port)
+    startWebServer(
+      { dvr: deps.dvr, history: deps.history, redis, imdbAutoSources: deps.imdbAutoSources },
+      config.web.port,
+    )
   }
 
   const shutdown = async () => {

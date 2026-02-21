@@ -15,7 +15,29 @@ const ImdbCsvSourceSchema = z.object({
   min_rating: z.number().int().min(0).max(10).default(0),
 })
 
-const SourceSchema = z.discriminatedUnion("type", [TraktSourceSchema, ImdbCsvSourceSchema])
+const ImdbAutoSourceSchema = z.object({
+  type: z.literal("imdb_auto"),
+  /** IMDb user ID, e.g. "ur12345678" — visible in your IMDb profile URL. */
+  user_id: z
+    .string()
+    .regex(/^ur\d+$/, 'Must be a valid IMDb user ID starting with "ur" followed by digits'),
+  /** Value of the "at-main" cookie from your browser's DevTools (Application → Cookies). */
+  cookie: z.string().min(1),
+  /** Which lists to download. Defaults to both watchlist and ratings. */
+  lists: z.array(z.enum(["watchlist", "ratings"])).default(["watchlist", "ratings"]),
+  /** For ratings lists: skip movies rated below this score (1–10). */
+  min_rating: z.number().int().min(1).max(10).default(1),
+  /** Max seconds to wait for IMDb to prepare the export (default: 120). */
+  poll_timeout_seconds: z.number().int().min(10).max(600).default(120),
+  /** Seconds between each poll request while waiting for the export (default: 4). */
+  poll_interval_seconds: z.number().int().min(2).max(30).default(4),
+})
+
+const SourceSchema = z.discriminatedUnion("type", [
+  TraktSourceSchema,
+  ImdbCsvSourceSchema,
+  ImdbAutoSourceSchema,
+])
 
 const LibraryJellyfinSchema = z.object({
   type: z.literal("jellyfin"),

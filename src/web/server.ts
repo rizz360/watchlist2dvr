@@ -2,11 +2,13 @@ import express from "express"
 import type { Redis } from "ioredis"
 import type { DvrAdapter } from "../dvr/index.js"
 import type { HistoryStore } from "../state/history.js"
+import type { ImdbAutoSource } from "../sources/imdb-auto.js"
 
 export interface WebDeps {
   dvr: DvrAdapter
   history: HistoryStore
   redis: Redis
+  imdbAutoSources?: ImdbAutoSource[]
 }
 
 export function startWebServer(deps: WebDeps, port: number): void {
@@ -152,6 +154,37 @@ export function startWebServer(deps: WebDeps, port: number): void {
       .catch((err: Error) => res.status(500).json({ error: err.message }))
   })
 
+  // --- IMDb Auto-download source status and refresh ---
+
+  app.get("/api/sources", (_req, res) => {
+    const sources = (deps.imdbAutoSources ?? []).map((s) => ({
+      type: "imdb_auto",
+      ...s.getStatus(),
+      // cookie is never exposed through the API
+    }))
+    res.json({ sources })
+  })
+
+  app.post("/api/sources/imdb/:userId/refresh", (req, res) => {
+    const { userId } = req.params
+    // Validate format to prevent misuse (userId is only used to look up a pre-configured source)
+    if (!/^ur\d+$/.test(userId)) {
+      res.status(400).json({ error: "Invalid IMDb user ID format" })
+      return
+    }
+    const source = (deps.imdbAutoSources ?? []).find((s) => s.getStatus().userId === userId)
+    if (!source) {
+      res.status(404).json({ error: `No imdb_auto source configured for ${userId}` })
+      return
+    }
+    source
+      .refresh()
+      .then(() => res.json({ ok: true, status: source.getStatus() }))
+      .catch((err: Error) =>
+        res.status(500).json({ error: err.message, status: source.getStatus() }),
+      )
+  })
+
   app.get("/{*splat}", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8")
     res.send(dashboardHtml())
@@ -217,6 +250,18 @@ tr:hover td{background:#1a1a30}
 a{color:#818cf8;text-decoration:none}
 a:hover{text-decoration:underline}
 .err-box{color:#f87171;font-size:.85rem;padding:1rem;background:#2a1a1a;border-radius:6px;margin:.5rem 0}
+.src-card{background:#1a1a30;border:1px solid #2a2a4a;border-radius:8px;padding:.9rem 1.4rem;margin-bottom:.7rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+.src-info{flex:1;min-width:0}
+.src-title{font-size:.92rem;font-weight:600;color:#c0c0e0;margin-bottom:.22rem}
+.src-meta{font-size:.78rem;color:#6b6b8a}
+.src-ok{color:#4ade80}.src-err{color:#f87171}.src-never{color:#6b6b8a}
+.guide-box{background:#1a1a30;border:1px solid #2a2a4a;border-radius:8px;padding:1.2rem 1.6rem;margin-top:.8rem}
+.guide-box ol{padding-left:1.3rem;color:#c0c0e0;font-size:.88rem;line-height:2}
+.guide-box code{background:#0d0d1a;padding:.1rem .4rem;border-radius:3px;font-size:.82rem;color:#a78bfa}
+.code-snip{background:#0d0d1a;border:1px solid #2a2a4a;border-radius:6px;padding:.85rem 1.1rem;font-family:monospace;font-size:.78rem;color:#86efac;margin-top:1rem;white-space:pre;line-height:1.7;overflow-x:auto}
+.refresh-btn{background:#2a2a4a;border:none;color:#a78bfa;padding:.4rem 1rem;border-radius:6px;cursor:pointer;font-size:.82rem;transition:background .15s;white-space:nowrap;flex-shrink:0}
+.refresh-btn:hover{background:#3a3a5a}
+.refresh-btn:disabled{opacity:.5;cursor:default}
 </style>
 </head>
 <body>
@@ -229,6 +274,7 @@ a:hover{text-decoration:underline}
   <button onclick="showTab('upcoming',this)">Upcoming</button>
   <button onclick="showTab('history',this)">History</button>
   <button onclick="showTab('debug',this)">Debug</button>
+  <button onclick="showTab('sources',this)">Sources</button>
 </nav>
   <div id="tab-watchlist" class="tab active">
     <div class="stat-row" id="stat-row"></div>
@@ -257,6 +303,28 @@ a:hover{text-decoration:underline}
         <button onclick="lookupCache()" style="background:#2a2a4a;border:none;color:#a78bfa;padding:.5rem 1rem;border-radius:6px;cursor:pointer;font-size:.88rem">Look up</button>
       </div>
       <div id="debug-lookup-result" style="margin-top:.8rem"></div>
+    </div>
+  </div>
+  <div id="tab-sources" class="tab">
+    <div id="src-auto-status"><p class="empty">Loading&hellip;</p></div>
+    <p class="sec" style="margin-top:2rem">How to set up IMDb auto-download</p>
+    <div class="guide-box">
+      <ol>
+        <li>Go to <a href="https://www.imdb.com" target="_blank" rel="noopener">imdb.com</a> and sign in to your account</li>
+        <li>Open DevTools: <code>F12</code> on Windows/Linux &nbsp;&bull;&nbsp; <code>&#8984;+Option+I</code> on Mac</li>
+        <li>Click the <strong>Application</strong> tab &rarr; <strong>Storage</strong> &rarr; <strong>Cookies</strong> &rarr; <code>https://www.imdb.com</code></li>
+        <li>Find the row where <strong>Name</strong> = <code>at-main</code> and copy its entire <strong>Value</strong></li>
+        <li>Your IMDb user ID is the <code>urXXXXXXX</code> part of your profile URL:<br><code>https://www.imdb.com/user/<strong>ur12345678</strong>/</code></li>
+      </ol>
+      <p style="margin-top:.9rem;font-size:.83rem;color:#c0c0e0">Add this block to <code>config.yaml</code> (under <code>sources:</code>), then restart the service. Your user ID is the <code>urXXXXXXX</code> from your IMDb profile URL: <code>imdb.com/user/<strong>ur12345678</strong>/</code></p>
+      <div class="code-snip">- type: imdb_auto
+  user_id: &quot;ur12345678&quot;   # replace with your IMDb user ID
+  cookie: &quot;v%3D1%7C&hellip;&quot;  # replace with the at-main cookie value
+  lists:
+    - watchlist              # movies you&apos;ve marked &ldquo;Want to See&rdquo;
+    - ratings                # movies you&apos;ve rated
+  min_rating: 1             # skip rated movies below this score (1&ndash;10)</div>
+      <p style="margin-top:.9rem;font-size:.79rem;color:#6b6b8a">The cookie expires when you log out of IMDb. If fetching stops working, re-copy the <code>at-main</code> value from DevTools, update <code>config.yaml</code>, and restart.</p>
     </div>
   </div>
   </div>
@@ -458,8 +526,56 @@ function lookupCache() {
   });
 }
 
-loadStatus(); loadWatchlist(); loadUpcoming(); loadHistory(); loadDebug();
-setInterval(function(){ loadStatus(); loadWatchlist(); loadUpcoming(); loadHistory(); loadDebug(); }, 5*60*1000);
+function loadSources() {
+  fetch('/api/sources').then(function(r){return r.json()}).then(function(data) {
+    var sources = (data.sources || []).filter(function(s){ return s.type === 'imdb_auto'; });
+    var el = document.getElementById('src-auto-status');
+    if (!sources.length) {
+      el.innerHTML = '<p class="sec">IMDb Auto-download</p><p style="color:#6b6b8a;font-size:.85rem;padding:.4rem 0">No <code>imdb_auto</code> sources configured yet &mdash; see the guide below.</p>';
+      return;
+    }
+    var html = '<p class="sec">IMDb Auto-download</p>';
+    sources.forEach(function(s) {
+      var icon = s.lastFetchStatus === 'ok'    ? '<span class="src-ok">&#10003;</span>'
+               : s.lastFetchStatus === 'error' ? '<span class="src-err">&#10007;</span>'
+               :                                 '<span class="src-never">&mdash;</span>';
+      var when = s.lastFetchAt ? new Date(s.lastFetchAt).toLocaleString() : 'Never fetched';
+      var count = s.lastFetchStatus === 'ok' ? ' &mdash; ' + s.lastFetchCount + ' items' : '';
+      var errLine = s.lastFetchStatus === 'error' && s.lastError
+        ? '<div style="color:#f87171;font-size:.76rem;margin-top:.3rem">'+esc(s.lastError)+'</div>' : '';
+      html += '<div class="src-card">';
+      html += '<div class="src-info">';
+      html += '<div class="src-title">'+esc(s.userId)+' &mdash; '+esc(s.lists.join(', '))+'</div>';
+      html += '<div class="src-meta">'+icon+' '+esc(when)+count+'</div>';
+      html += errLine;
+      html += '</div>';
+      html += '<button class="refresh-btn" id="refresh-btn-'+esc(s.userId)+'" onclick="refreshImdbSource(\'' + esc(s.userId) + '\')">Refresh</button>';
+      html += '</div>';
+    });
+    el.innerHTML = html;
+  }).catch(function(e){
+    document.getElementById('src-auto-status').innerHTML = '<p class="err-box">'+esc(String(e))+'</p>';
+  });
+}
+
+function refreshImdbSource(userId) {
+  var btn = document.getElementById('refresh-btn-' + userId);
+  if (btn) { btn.disabled = true; btn.textContent = 'Refreshing\u2026'; }
+  fetch('/api/sources/imdb/' + encodeURIComponent(userId) + '/refresh', {method:'POST'})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if (btn) { btn.disabled = false; btn.textContent = 'Refresh'; }
+      if (d.error) { alert('Refresh failed: ' + d.error); }
+      loadSources();
+    })
+    .catch(function(e){
+      if (btn) { btn.disabled = false; btn.textContent = 'Refresh'; }
+      alert('Refresh failed: ' + String(e));
+    });
+}
+
+loadStatus(); loadWatchlist(); loadUpcoming(); loadHistory(); loadDebug(); loadSources();
+setInterval(function(){ loadStatus(); loadWatchlist(); loadUpcoming(); loadHistory(); loadDebug(); loadSources(); }, 5*60*1000);
 </script>
 </body>
 </html>`

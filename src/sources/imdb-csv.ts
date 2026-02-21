@@ -14,6 +14,108 @@ import type { WatchlistSource, WatchlistItem } from "./index.js"
 // "Original Title" (native language) is used as originalTitle; "Title" (English display name)
 // is pre-seeded as localizedTitles["en"] when it differs.
 
+/** Minimal RFC 4180 CSV parser (handles quoted fields with embedded commas/quotes). */
+function parseCsvRow(line: string): string[] {
+  const cols: string[] = []
+  let current = ""
+  let inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"'
+        i++
+      } else {
+        inQuotes = !inQuotes
+      }
+    } else if (ch === "," && !inQuotes) {
+      cols.push(current)
+      current = ""
+    } else {
+      current += ch
+    }
+  }
+  cols.push(current)
+  return cols
+}
+
+function parseImdbLines(lines: string[], minRating: number): WatchlistItem[] {
+  if (lines.length < 2) return []
+
+  const headers = parseCsvRow(lines[0]).map((h) => h.trim())
+  const constIdx = headers.indexOf("Const")
+  const titleIdx = headers.indexOf("Title")
+  const origTitleIdx = headers.indexOf("Original Title")
+  const titleTypeIdx = headers.indexOf("Title Type")
+  const yearIdx = headers.indexOf("Year")
+  const ratingIdx = headers.indexOf("Your Rating")
+  const dateIdx =
+    headers.indexOf("Created") !== -1 ? headers.indexOf("Created") : headers.indexOf("Date Rated")
+
+  if (constIdx === -1 || titleIdx === -1) return []
+
+  const items: WatchlistItem[] = []
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i]
+    if (!line.trim()) continue
+
+    const cols = parseCsvRow(line)
+    const imdbId = cols[constIdx]?.trim()
+    const title = cols[titleIdx]?.trim()
+    if (!imdbId || !title || !imdbId.startsWith("tt")) continue
+
+    // Only record movies — skip Video Games, TV series, shorts, etc.
+    if (titleTypeIdx !== -1) {
+      const titleType = cols[titleTypeIdx]?.trim()
+      if (titleType && titleType !== "Movie" && titleType !== "TV Movie") continue
+    }
+
+    // Per-row source and rating detection
+    const ratingRaw = ratingIdx !== -1 ? cols[ratingIdx]?.trim() : ""
+    const userRatingParsed = ratingRaw ? parseInt(ratingRaw, 10) : NaN
+    const source: "watchlist" | "rating" = !isNaN(userRatingParsed) ? "rating" : "watchlist"
+    const userRating = source === "rating" ? userRatingParsed : undefined
+
+    // Apply min_rating filter only to rated rows
+    if (source === "rating" && userRating! < minRating) continue
+
+    // Use "Original Title" (native language) as canonical title
+    // Pre-seed English display title so matching engine can try both
+    const origTitle = origTitleIdx !== -1 ? cols[origTitleIdx]?.trim() : undefined
+    const originalTitle = origTitle || title
+    const localizedTitles: Record<string, string> = {}
+    if (origTitle && title && origTitle !== title) {
+      localizedTitles["en"] = title
+    }
+
+    const year = yearIdx !== -1 ? parseInt(cols[yearIdx], 10) || undefined : undefined
+    const addedAt = dateIdx !== -1 ? new Date(cols[dateIdx]) : new Date()
+
+    items.push({
+      imdbId,
+      originalTitle,
+      localizedTitles,
+      year,
+      addedAt: isNaN(addedAt.getTime()) ? new Date() : addedAt,
+      source,
+      userRating,
+    })
+  }
+
+  return items
+}
+
+/**
+ * Parse an IMDb CSV export from raw text (watchlist or ratings).
+ * Exported for use by ImdbAutoSource which downloads CSV over HTTP.
+ */
+export function parseImdbCsvText(text: string, minRating: number = 1): WatchlistItem[] {
+  // Strip UTF-8 BOM if present
+  const clean = text.replace(/^\uFEFF/, "")
+  return parseImdbLines(clean.split(/\r?\n/), minRating)
+}
+
 export class ImdbCsvSource implements WatchlistSource {
   constructor(
     private readonly csvPath: string,
@@ -26,7 +128,15 @@ export class ImdbCsvSource implements WatchlistSource {
     const items: WatchlistItem[] = []
 
     for (const file of files) {
-      for (const item of await this.processFile(file)) {
+      const lines = await this.readLines(file)
+      if (lines.length >= 2) {
+        const headers = parseCsvRow(lines[0]).map((h) => h.trim())
+        if (headers.indexOf("Const") === -1 || headers.indexOf("Title") === -1) {
+          console.warn(`  [imdb-csv] Skipping ${file} — unrecognized headers`)
+          continue
+        }
+      }
+      for (const item of parseImdbLines(lines, this.minRating)) {
         if (!seen.has(item.imdbId)) {
           seen.add(item.imdbId)
           items.push(item)
@@ -53,74 +163,6 @@ export class ImdbCsvSource implements WatchlistSource {
     return [this.csvPath]
   }
 
-  private async processFile(filePath: string): Promise<WatchlistItem[]> {
-    const lines = await this.readLines(filePath)
-    if (lines.length < 2) return []
-
-    const headers = this.parseCsvRow(lines[0]).map((h) => h.trim())
-    const constIdx = headers.indexOf("Const")
-    const titleIdx = headers.indexOf("Title")
-    const origTitleIdx = headers.indexOf("Original Title")
-    const titleTypeIdx = headers.indexOf("Title Type")
-    const yearIdx = headers.indexOf("Year")
-    const ratingIdx = headers.indexOf("Your Rating")
-    const dateIdx =
-      headers.indexOf("Created") !== -1 ? headers.indexOf("Created") : headers.indexOf("Date Rated")
-
-    if (constIdx === -1 || titleIdx === -1) {
-      console.warn(`  [imdb-csv] Skipping ${filePath} — unrecognized headers`)
-      return []
-    }
-
-    const items: WatchlistItem[] = []
-
-    for (let i = 1; i < lines.length; i++) {
-      const cols = this.parseCsvRow(lines[i])
-      const imdbId = cols[constIdx]?.trim()
-      const title = cols[titleIdx]?.trim()
-      if (!imdbId || !title || !imdbId.startsWith("tt")) continue
-
-      // Only record movies — skip Video Games, TV series, shorts, etc.
-      if (titleTypeIdx !== -1) {
-        const titleType = cols[titleTypeIdx]?.trim()
-        if (titleType && titleType !== "Movie" && titleType !== "TV Movie") continue
-      }
-
-      // Per-row source and rating detection
-      const ratingRaw = ratingIdx !== -1 ? cols[ratingIdx]?.trim() : ""
-      const userRatingParsed = ratingRaw ? parseInt(ratingRaw, 10) : NaN
-      const source: "watchlist" | "rating" = !isNaN(userRatingParsed) ? "rating" : "watchlist"
-      const userRating = source === "rating" ? userRatingParsed : undefined
-
-      // Apply min_rating filter only to rated rows
-      if (source === "rating" && userRating! < this.minRating) continue
-
-      // Use "Original Title" (native language) as canonical title
-      // Pre-seed English display title so matching engine can try both
-      const origTitle = origTitleIdx !== -1 ? cols[origTitleIdx]?.trim() : undefined
-      const originalTitle = origTitle || title
-      const localizedTitles: Record<string, string> = {}
-      if (origTitle && title && origTitle !== title) {
-        localizedTitles["en"] = title
-      }
-
-      const year = yearIdx !== -1 ? parseInt(cols[yearIdx], 10) || undefined : undefined
-      const addedAt = dateIdx !== -1 ? new Date(cols[dateIdx]) : new Date()
-
-      items.push({
-        imdbId,
-        originalTitle,
-        localizedTitles,
-        year,
-        addedAt: isNaN(addedAt.getTime()) ? new Date() : addedAt,
-        source,
-        userRating,
-      })
-    }
-
-    return items
-  }
-
   private readLines(path: string): Promise<string[]> {
     return new Promise((resolve, reject) => {
       const lines: string[] = []
@@ -129,30 +171,5 @@ export class ImdbCsvSource implements WatchlistSource {
       rl.on("close", () => resolve(lines))
       rl.on("error", reject)
     })
-  }
-
-  /** Minimal RFC 4180 CSV parser (handles quoted fields with commas/newlines). */
-  private parseCsvRow(line: string): string[] {
-    const cols: string[] = []
-    let current = ""
-    let inQuotes = false
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i]
-      if (ch === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          current += '"'
-          i++
-        } else {
-          inQuotes = !inQuotes
-        }
-      } else if (ch === "," && !inQuotes) {
-        cols.push(current)
-        current = ""
-      } else {
-        current += ch
-      }
-    }
-    cols.push(current)
-    return cols
   }
 }
