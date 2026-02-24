@@ -90,6 +90,9 @@ export class PlexDvrAdapter implements DvrAdapter {
 
   async scheduleEvent(eventId: string): Promise<void> {
     const providerId = await this.getProviderId()
+    // Fully decode the eventId (which the EPG returns in a double-encoded path form) to get
+    // the canonical ratingKey that Plex stores internally and expects in the subscription API.
+    const ratingKey = fullyDecode(eventId)
     // Build query params (URLSearchParams encodes bracket chars → %5B%5D, which Plex accepts)
     const qs = new URLSearchParams({
       "X-Plex-Token": this.token,
@@ -98,10 +101,10 @@ export class PlexDvrAdapter implements DvrAdapter {
       "params[mediaProviderID]": String(providerId),
       "prefs[oneShot]": "true",
     }).toString()
-    // Append hints[ratingKey] with literal bracket chars and the raw (pre-encoded) eventId
-    // so that the server URL-decodes it exactly once to the canonical single-encoded form.
-    const url = `${this.baseUrl}/media/subscriptions?${qs}&hints[ratingKey]=${eventId}`
-    console.log(`  [dvr:plex] Subscribing: ${fullyDecode(eventId)}`)
+    // Append hints[ratingKey] using encodeURIComponent so the HTTP layer decodes it exactly
+    // once and Plex receives the canonical (fully-decoded) ratingKey for the EPG item lookup.
+    const url = `${this.baseUrl}/media/subscriptions?${qs}&hints[ratingKey]=${encodeURIComponent(ratingKey)}`
+    console.log(`  [dvr:plex] Subscribing: ${ratingKey}`)
     await axios.post(url, null, {
       headers: { Accept: "application/json" },
       httpAgent: ipv4Agent,
