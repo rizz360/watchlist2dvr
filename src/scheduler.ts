@@ -2,7 +2,7 @@ import Redis from "ioredis"
 import axios from "axios"
 import https from "https"
 import http from "http"
-import { loadConfig, type Config } from "./config.js"
+import { loadConfig, type Config, type SourceConfig } from "./config.js"
 import { TraktSource } from "./sources/trakt.js"
 import { ImdbCsvSource } from "./sources/imdb-csv.js"
 import { ImdbAutoSource } from "./sources/imdb-auto.js"
@@ -29,11 +29,20 @@ interface RunDeps {
   history: HistoryStore
   tmdb: TmdbResolver
   sources: WatchlistSource[]
+  sourceIds: string[]
   imdbAutoSources: ImdbAutoSource[]
   checkers: LibraryChecker[]
   epg: EpgProvider
   dvr: DvrAdapter
   engine: MatchingEngine
+}
+
+/** Derive a stable, human-readable cache key for a source from its config. */
+function sourceIdFromConfig(s: SourceConfig): string {
+  if (s.type === "trakt") return `trakt:${s.username}`
+  if (s.type === "imdb_auto") return `imdb_auto:${s.user_id}`
+  if (s.type === "imdb_public_lists") return `imdb_public_lists:${s.lists.join(",")}`
+  return `imdb_csv:${s.path}`
 }
 
 function buildDeps(config: Config, redis: Redis): RunDeps {
@@ -49,6 +58,7 @@ function buildDeps(config: Config, redis: Redis): RunDeps {
     history: new HistoryStore(redis),
     tmdb: new TmdbResolver(config.tmdb.api_key, redis),
     imdbAutoSources,
+    sourceIds: config.sources.map(sourceIdFromConfig),
     sources: config.sources.map((s) => {
       if (s.type === "trakt") return new TraktSource(s.client_id, s.username)
       if (s.type === "imdb_auto") {
@@ -85,7 +95,7 @@ function buildDeps(config: Config, redis: Redis): RunDeps {
 }
 
 async function run(deps: RunDeps): Promise<void> {
-  const { config, state, history, tmdb, sources, checkers, epg, dvr, engine } = deps
+  const { config, state, history, tmdb, sources, sourceIds, checkers, epg, dvr, engine } = deps
   const startedAt = new Date().toISOString()
   const errors: string[] = []
 
@@ -93,10 +103,13 @@ async function run(deps: RunDeps): Promise<void> {
 
   // 1. Fetch watchlist from all sources (deduplicate by imdbId)
   const allItems = new Map<string, WatchlistItem>()
-  for (const source of sources) {
+  for (let si = 0; si < sources.length; si++) {
+    const source = sources[si]
+    const sourceId = sourceIds[si]
     try {
       const items = await source.fetchWatchlist()
       console.log(`  [source] Fetched ${items.length} items`)
+      await state.saveSourceCache(sourceId, items)
       for (const item of items) {
         if (!allItems.has(item.imdbId)) allItems.set(item.imdbId, item)
       }
@@ -104,6 +117,20 @@ async function run(deps: RunDeps): Promise<void> {
       const msg = `Source fetch failed: ${(err as Error).message}`
       errors.push(msg)
       console.error(`  [source] ${msg}`)
+      // Fall back to cached items from the last successful fetch
+      try {
+        const cached = await state.loadSourceCache(sourceId)
+        if (cached && cached.length > 0) {
+          console.warn(`  [source] Using ${cached.length} cached item(s) from last successful fetch for source "${sourceId}".`)
+          for (const item of cached) {
+            if (!allItems.has(item.imdbId)) allItems.set(item.imdbId, item)
+          }
+        } else {
+          console.warn(`  [source] No cached data available for source "${sourceId}" — skipping.`)
+        }
+      } catch (cacheErr) {
+        console.warn(`  [source] Could not load cache for source "${sourceId}": ${(cacheErr as Error).message}`)
+      }
     }
   }
   console.log(`  [source] Total unique items: ${allItems.size}`)
