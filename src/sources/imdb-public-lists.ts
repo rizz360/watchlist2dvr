@@ -55,17 +55,26 @@ export class ImdbPublicListsSource implements WatchlistSource {
   }
 
   private async fetchList(url: string): Promise<WatchlistItem[]> {
-    let html: string
+    let html = ""
     let httpStatus = 0
-    try {
-      const res = await gotScraping.get(url, {
-        ...SCRAPING_OPTIONS,
-        throwHttpErrors: false,
-      })
-      httpStatus = res.statusCode
-      html = res.body
-    } catch (err) {
-      throw new Error(`Failed to fetch ${url}: ${(err as Error).message}`)
+    // HTTP 202 means IMDb accepted the request but the page isn't ready yet
+    // (seen on chart pages). Retry a few times before giving up.
+    const MAX_202_RETRIES = 3
+    for (let attempt = 0; attempt <= MAX_202_RETRIES; attempt++) {
+      try {
+        const res = await gotScraping.get(url, {
+          ...SCRAPING_OPTIONS,
+          throwHttpErrors: false,
+        })
+        httpStatus = res.statusCode
+        html = res.body
+      } catch (err) {
+        throw new Error(`Failed to fetch ${url}: ${(err as Error).message}`)
+      }
+      if (httpStatus !== 202) break
+      if (attempt < MAX_202_RETRIES) {
+        await new Promise((r) => setTimeout(r, 2_000))
+      }
     }
 
     if (httpStatus === 403 || httpStatus === 429) {

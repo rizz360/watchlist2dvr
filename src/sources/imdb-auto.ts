@@ -158,9 +158,28 @@ export class ImdbAutoSource implements WatchlistSource {
 
   /** Discover the user's watchlist list ID (e.g. "ls056610540") from the page. */
   private async discoverWatchlistId(): Promise<string> {
-    const html = await this.warmPage(
+    // Use gotScraping directly so we can inspect res.url — IMDb often issues a
+    // server-side redirect from /user/{id}/watchlist/ to /list/{lsXXX}/ and
+    // the list ID is embedded in that final URL.
+    const res = await gotScraping.get(
       `https://www.imdb.com/user/${this.userId}/watchlist/`,
+      {
+        headerGeneratorOptions: {
+          browsers: [{ name: "chrome" as const, minVersion: 120 }],
+          operatingSystems: ["windows" as const],
+        },
+        headers: { Cookie: this.cookieHeader() },
+        followRedirect: true,
+        timeout: { request: 15_000 },
+        throwHttpErrors: false,
+      },
     )
+    this.collectSetCookies(res.headers as Record<string, string | string[]>)
+    const html = res.body
+
+    // Strategy 0: list ID present in the final redirect URL
+    const finalUrlMatch = LIST_ID_RE.exec(res.url)
+    if (finalUrlMatch) return finalUrlMatch[0]
 
     const lsCapture = LIST_ID_RE.source // ls\d{7,10}
 
