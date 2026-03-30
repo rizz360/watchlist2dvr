@@ -103,6 +103,9 @@ export class PlexEpgProvider implements EpgProvider {
     })
 
     const items = resp.data.MediaContainer.Metadata ?? []
+    if (items.length > 0) {
+      console.log(`  [epg:plex] sample ratingKey for "${items[0].title}": ${JSON.stringify(items[0].ratingKey)}`)
+    }
     return items.flatMap((item): EpgEvent[] => {
       const channel = item.Media?.[0]
       if (!channel?.beginsAt) return []
