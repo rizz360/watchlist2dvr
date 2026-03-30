@@ -1,4 +1,5 @@
 import axios from "axios"
+import { gotScraping } from "got-scraping"
 import { parseImdbCsvText } from "./imdb-csv.js"
 import type { WatchlistSource, WatchlistItem } from "./index.js"
 
@@ -137,27 +138,22 @@ export class ImdbAutoSource implements WatchlistSource {
     }
   }
 
-  private pageHeaders(): Record<string, string> {
-    return {
-      Cookie: this.cookieHeader(),
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-      Accept: "text/html,application/xhtml+xml,*/*",
-      "Accept-Language": "en-US,en;q=0.9",
-    }
-  }
-
   /** Visit an IMDb page to establish a full session cookie set. */
   private async warmPage(url: string): Promise<string> {
-    const res = await axios.get<string>(url, {
-      responseType: "text",
-      headers: this.pageHeaders(),
-      maxRedirects: 5,
-      timeout: 15_000,
-      validateStatus: () => true,
+    const res = await gotScraping.get(url, {
+      headerGeneratorOptions: {
+        browsers: [{ name: "chrome" as const, minVersion: 120 }],
+        operatingSystems: ["windows" as const],
+      },
+      headers: {
+        Cookie: this.cookieHeader(),
+      },
+      followRedirect: true,
+      timeout: { request: 15_000 },
+      throwHttpErrors: false,
     })
     this.collectSetCookies(res.headers as Record<string, string | string[]>)
-    return res.data
+    return res.body
   }
 
   /** Discover the user's watchlist list ID (e.g. "ls056610540") from the page. */
