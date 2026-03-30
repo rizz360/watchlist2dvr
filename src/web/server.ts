@@ -414,7 +414,7 @@ function itemRow(item) {
   var id = item.imdbId;
   var extLink = id.startsWith('tmdb:')
     ? ' <a href="https://www.themoviedb.org/movie/'+esc(id.slice(5))+'" target="_blank" rel="noopener">&#x2197;</a>'
-    : ' <a href="https://www.imdb.com/title/'+esc(id)+'/' target="_blank" rel="noopener">&#x2197;</a>';
+    : ' <a href="https://www.imdb.com/title/'+esc(id)+'/" target="_blank" rel="noopener">&#x2197;</a>';
   var ratingHtml = item.userRating ? '<span class="badge badge-rating">&#9733; '+item.userRating+'</span>' : '&mdash;';
   var badge='', epg='&mdash;', airtime='&mdash;';
   var rowClass = item.status === 'in_library' ? ' class="tr-library"' : '';
