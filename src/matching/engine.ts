@@ -17,7 +17,7 @@ export interface MatchResult {
   event: EpgEvent
   matchedTitle: string
   matchedLanguage: string
-  confidence: "exact" | "fuzzy"
+  confidence: "exact" | "suffix" | "fuzzy"
 }
 
 export interface AmbiguousResult {
@@ -75,30 +75,43 @@ export class MatchingEngine {
 
       const normalizedTarget = normalize(title)
 
+      // Tier 1: exact match
       const exactHits = normalizedEvents.filter(
         (e) => e.normalizedTitle === normalizedTarget,
       )
+      if (exactHits.length > 0) {
+        const yearFiltered = this.filterByYear(item.year, exactHits)
+        if (yearFiltered.length >= 1) {
+          const best = yearFiltered.reduce((a, b) =>
+            a.event.startTime <= b.event.startTime ? a : b,
+          )
+          return { item, event: best.event, matchedTitle: title, matchedLanguage: lang, confidence: "exact" }
+        }
+      }
 
-      if (exactHits.length === 0) continue
-
-      const yearFiltered = this.filterByYear(item.year, exactHits)
-
-      if (yearFiltered.length >= 1) {
-        // Multiple airings of the same movie → pick the earliest broadcast
-        const best = yearFiltered.reduce((a, b) =>
-          a.event.startTime <= b.event.startTime ? a : b,
+      // Tier 2: suffix match — EPG title may prefix franchise/series name, e.g.
+      //   "James Bond 007 - Man lebt nur zweimal"  →  target: "man lebt nur zweimal"
+      // We accept a match when the normalized target is a word-boundary-aligned
+      // suffix of the normalized EPG title (preceded by a space or is the full title).
+      if (normalizedTarget.length >= 4) {
+        const suffixHits = normalizedEvents.filter(
+          (e) =>
+            e.normalizedTitle !== normalizedTarget &&
+            (e.normalizedTitle.endsWith(" " + normalizedTarget)),
         )
-        return {
-          item,
-          event: best.event,
-          matchedTitle: title,
-          matchedLanguage: lang,
-          confidence: "exact",
+        if (suffixHits.length > 0) {
+          const yearFiltered = this.filterByYear(item.year, suffixHits)
+          if (yearFiltered.length >= 1) {
+            const best = yearFiltered.reduce((a, b) =>
+              a.event.startTime <= b.event.startTime ? a : b,
+            )
+            return { item, event: best.event, matchedTitle: title, matchedLanguage: lang, confidence: "suffix" }
+          }
         }
       }
     }
 
-    // Fuzzy fallback (opt-in)
+    // Tier 3: fuzzy fallback (opt-in)
     if (this.config.fuzzyEnabled) {
       return this.fuzzyMatch(item, normalizedEvents)
     }

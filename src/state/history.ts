@@ -10,7 +10,7 @@ export interface RunMatch {
   epgTitle: string
   channelName: string
   startTime: string
-  confidence: "exact" | "fuzzy"
+  confidence: "exact" | "suffix" | "fuzzy"
   matchedLanguage: string
 }
 
