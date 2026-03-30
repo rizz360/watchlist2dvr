@@ -271,6 +271,9 @@ async function run(deps: RunDeps): Promise<void> {
     }
   }
   console.log(`  [epg] Found ${epgResults.length} EPG event(s)`)
+  for (const e of epgResults) {
+    console.log(`  [epg] event: "${e.title}" (${e.year ?? "?"}) on ${e.channelName} @ ${e.startTime.toISOString()}`)
+  }
 
   // 6. Match
   const { matches, ambiguous, unmatched } = engine.match(remaining, epgResults)
