@@ -177,6 +177,8 @@ export class ImdbAutoSource implements WatchlistSource {
     this.collectSetCookies(res.headers as Record<string, string | string[]>)
     const html = res.body
 
+    console.log(`  [imdb-auto] watchlist page: HTTP ${res.statusCode}, final URL: ${res.url}, body snippet: ${html.slice(0, 200).replace(/\s+/g, " ")}`)
+
     // Strategy 0: list ID present in the final redirect URL
     const finalUrlMatch = LIST_ID_RE.exec(res.url)
     if (finalUrlMatch) return finalUrlMatch[0]

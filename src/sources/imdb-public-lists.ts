@@ -71,6 +71,9 @@ export class ImdbPublicListsSource implements WatchlistSource {
       } catch (err) {
         throw new Error(`Failed to fetch ${url}: ${(err as Error).message}`)
       }
+      if (httpStatus !== 200) {
+        console.log(`  [imdb-public] ${url}: HTTP ${httpStatus} (attempt ${attempt + 1}/${MAX_202_RETRIES + 1}), body snippet: ${html.slice(0, 200).replace(/\s+/g, " ")}`)
+      }
       if (httpStatus !== 202) break
       if (attempt < MAX_202_RETRIES) {
         await new Promise((r) => setTimeout(r, 2_000))
