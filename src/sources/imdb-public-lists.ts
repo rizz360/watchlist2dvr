@@ -1,4 +1,4 @@
-import axios from "axios"
+import { gotScraping } from "got-scraping"
 import type { WatchlistSource, WatchlistItem } from "./index.js"
 
 // Fetches one or more public IMDb pages (charts, user lists) and extracts
@@ -16,9 +16,6 @@ import type { WatchlistSource, WatchlistItem } from "./index.js"
 //   2. Parse JSON-LD (<script type="application/ld+json">) blocks which IMDb
 //      uses on chart pages (ItemList schema) after migrating away from Next.js.
 
-const USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-
 /** Regex that captures the tt-identifier from an IMDb title URL path segment. */
 const IMDB_TITLE_ID_RE = /\/title\/(tt\d{7,10})\//
 
@@ -27,6 +24,14 @@ const MAX_VALID_YEAR = 2200
 
 /** Number of leading HTML characters to inspect for Cloudflare challenge markers. */
 const CF_SAMPLE_SIZE = 2000
+
+const SCRAPING_OPTIONS = {
+  headerGeneratorOptions: {
+    browsers: [{ name: "chrome" as const, minVersion: 120 }],
+    operatingSystems: ["windows" as const],
+  },
+  timeout: { request: 20_000 },
+}
 
 export class ImdbPublicListsSource implements WatchlistSource {
   constructor(private readonly urls: string[]) {}
@@ -53,20 +58,12 @@ export class ImdbPublicListsSource implements WatchlistSource {
     let html: string
     let httpStatus = 0
     try {
-      const res = await axios.get<string>(url, {
-        responseType: "text",
-        headers: {
-          "User-Agent": USER_AGENT,
-          Accept: "text/html,application/xhtml+xml,*/*",
-          "Accept-Language": "en-US,en;q=0.9",
-        },
-        timeout: 20_000,
-        // Accept all HTTP status codes so we can give specific error messages
-        // for Cloudflare blocks (403/429) vs genuine network failures.
-        validateStatus: () => true,
+      const res = await gotScraping.get(url, {
+        ...SCRAPING_OPTIONS,
+        throwHttpErrors: false,
       })
-      httpStatus = res.status
-      html = res.data
+      httpStatus = res.statusCode
+      html = res.body
     } catch (err) {
       throw new Error(`Failed to fetch ${url}: ${(err as Error).message}`)
     }
