@@ -25,6 +25,9 @@ const IMDB_TITLE_ID_RE = /\/title\/(tt\d{7,10})\//
 const MIN_VALID_YEAR = 1800
 const MAX_VALID_YEAR = 2200
 
+/** Number of leading HTML characters to inspect for Cloudflare challenge markers. */
+const CF_SAMPLE_SIZE = 2000
+
 export class ImdbPublicListsSource implements WatchlistSource {
   constructor(private readonly urls: string[]) {}
 
@@ -48,6 +51,7 @@ export class ImdbPublicListsSource implements WatchlistSource {
 
   private async fetchList(url: string): Promise<WatchlistItem[]> {
     let html: string
+    let httpStatus = 0
     try {
       const res = await axios.get<string>(url, {
         responseType: "text",
@@ -57,10 +61,34 @@ export class ImdbPublicListsSource implements WatchlistSource {
           "Accept-Language": "en-US,en;q=0.9",
         },
         timeout: 20_000,
+        // Accept all HTTP status codes so we can give specific error messages
+        // for Cloudflare blocks (403/429) vs genuine network failures.
+        validateStatus: () => true,
       })
+      httpStatus = res.status
       html = res.data
     } catch (err) {
       throw new Error(`Failed to fetch ${url}: ${(err as Error).message}`)
+    }
+
+    if (httpStatus === 403 || httpStatus === 429) {
+      throw new Error(
+        `IMDb rejected the request with HTTP ${httpStatus} for ${url}. ` +
+          `This is likely Cloudflare bot detection. ` +
+          `A plain HTTP request is no longer sufficient to access IMDb pages.`,
+      )
+    }
+
+    if (httpStatus !== 200) {
+      throw new Error(`Failed to fetch ${url}: HTTP ${httpStatus}`)
+    }
+
+    if (isCloudflareChallengeHtml(html)) {
+      throw new Error(
+        `IMDb returned a Cloudflare challenge page for ${url}. ` +
+          `A plain HTTP request is no longer sufficient to access IMDb pages. ` +
+          `Consider using a headless browser with stealth mode.`,
+      )
     }
 
     const found = new Map<string, { title: string; year?: number }>()
@@ -97,7 +125,8 @@ export class ImdbPublicListsSource implements WatchlistSource {
     if (found.size === 0) {
       throw new Error(
         `No movie entries found on ${url}. ` +
-          `The URL may not be a list/chart page, or IMDb's page structure has changed.`,
+          `The URL may not be a list/chart page, IMDb's page structure may have changed, ` +
+          `or the page content may have been blocked (e.g. Cloudflare bot protection).`,
       )
     }
 
@@ -112,6 +141,27 @@ export class ImdbPublicListsSource implements WatchlistSource {
       listLabel: labelFromUrl(url),
     }))
   }
+}
+
+/**
+ * Returns true if the HTML looks like a Cloudflare challenge or block page
+ * rather than real IMDb content.
+ *
+ * IMDb is protected by Cloudflare, which returns a browser verification
+ * challenge (HTTP 200 with a JS-driven challenge page) or a hard block
+ * (HTTP 403) when it detects bot-like requests.
+ *
+ * @internal exported for testing
+ */
+export function isCloudflareChallengeHtml(html: string): boolean {
+  const head = html.slice(0, CF_SAMPLE_SIZE).toLowerCase()
+  return (
+    head.includes("just a moment") ||
+    head.includes("cf-browser-verification") ||
+    head.includes("cf-challenge-running") ||
+    head.includes("cf_chl_opt") ||
+    (head.includes("cloudflare") && head.includes("ray id"))
+  )
 }
 
 /** Derive a short human-readable label from a public IMDb URL. */
