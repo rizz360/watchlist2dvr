@@ -92,9 +92,10 @@ export class PlexLibraryChecker implements LibraryChecker {
         const mc = resp.data.MediaContainer
         const items = mc.Metadata ?? []
         for (const item of items) {
-          // New Plex format: Guid[] with "imdb://ttXXX" entries
+          // New Plex format: Guid[] with "imdb://ttXXX" and "tmdb://12345" entries
           for (const g of item.Guid ?? []) {
             if (g.id?.startsWith("imdb://")) ids.add(g.id.slice(7))
+            else if (g.id?.startsWith("tmdb://")) ids.add(`tmdb:${g.id.slice(7)}`)
           }
           // Legacy Plex format: guid = "com.plexapp.agents.imdb://ttXXX?lang=..."
           if (item.guid) {

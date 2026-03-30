@@ -3,7 +3,7 @@ import type { Redis } from "ioredis"
 import type { LibraryChecker } from "./index.js"
 
 interface JellyfinItem {
-  ProviderIds?: { Imdb?: string }
+  ProviderIds?: { Imdb?: string; Tmdb?: string }
 }
 
 interface JellyfinResponse {
@@ -55,6 +55,8 @@ export class JellyfinLibraryChecker implements LibraryChecker {
       for (const item of Items) {
         const imdb = item.ProviderIds?.Imdb
         if (imdb) ids.add(imdb)
+        const tmdb = item.ProviderIds?.Tmdb
+        if (tmdb) ids.add(`tmdb:${tmdb}`)
       }
       startIndex += Items.length
       if (startIndex >= TotalRecordCount || Items.length === 0) break

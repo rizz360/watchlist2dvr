@@ -68,7 +68,7 @@ function buildDeps(config: Config, redis: Redis): RunDeps {
         return imdbAutoSources.find((inst) => inst.getStatus().userId === s.user_id)!
       }
       if (s.type === "imdb_public_lists") return new ImdbPublicListsSource(s.lists, s.extra_cookies)
-      if (s.type === "tmdb_lists") return new TmdbListsSource(config.tmdb.api_key, s.lists, s.pages, redis)
+      if (s.type === "tmdb_lists") return new TmdbListsSource(config.tmdb.api_key, s.lists, s.pages)
       return new ImdbCsvSource(s.path, s.min_rating)
     }),
     checkers:

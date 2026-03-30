@@ -30,11 +30,17 @@ export class TmdbResolver {
       return titles
     }
 
-    const tmdbId = await this.findTmdbId(imdbId)
-    if (!tmdbId) {
-      // Cache the empty result so we don't re-query TMDB on every run
-      await this.redis.set(cacheKey, JSON.stringify({}), "EX", CACHE_TTL_SECONDS)
-      return {}
+    let tmdbId: number | null
+    if (imdbId.startsWith("tmdb:")) {
+      // Item was sourced directly from TMDB — use its ID without any IMDb lookup.
+      tmdbId = parseInt(imdbId.slice(5), 10)
+    } else {
+      tmdbId = await this.findTmdbId(imdbId)
+      if (!tmdbId) {
+        // Cache the empty result so we don't re-query TMDB on every run
+        await this.redis.set(cacheKey, JSON.stringify({}), "EX", CACHE_TTL_SECONDS)
+        return {}
+      }
     }
 
     const response = await axios.get<{ translations: TmdbTranslation[] }>(
