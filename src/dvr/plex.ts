@@ -90,7 +90,16 @@ export class PlexDvrAdapter implements DvrAdapter {
 
   async scheduleEvent(eventId: string): Promise<void> {
     const providerId = await this.getProviderId()
-    const ratingKey = fullyDecode(eventId)
+    // The EPG returns ratingKeys double-encoded (e.g. tv%2Eplex%2Exmltv%3A%2F%2Fmovie%2FNew%2520Moon...).
+    // Decoding exactly ONCE yields the canonical Plex URI used internally:
+    //   tv.plex.xmltv://movie/New%20Moon...
+    // Over-decoding (fully) produces literal spaces which Plex cannot resolve → blank subscription.
+    let ratingKey: string
+    try {
+      ratingKey = decodeURIComponent(eventId)
+    } catch {
+      ratingKey = eventId
+    }
     console.log(`  [dvr:plex] scheduleEvent: raw eventId=${JSON.stringify(eventId)} decoded=${JSON.stringify(ratingKey)}`)
     // Build query params (URLSearchParams encodes bracket chars → %5B%5D, which Plex accepts)
     const qs = new URLSearchParams({
