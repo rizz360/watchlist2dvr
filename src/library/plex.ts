@@ -26,7 +26,7 @@ interface PlexLibraryContainer {
   }
 }
 
-const CACHE_KEY = "plex:library:all"
+const CACHE_KEY = "plex:library:all:v2"
 const CACHE_TTL_SECONDS = 6 * 60 * 60 // 6 hours
 const PAGE_SIZE = 500
 

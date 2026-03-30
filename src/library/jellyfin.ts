@@ -11,7 +11,7 @@ interface JellyfinResponse {
   TotalRecordCount: number
 }
 
-const CACHE_KEY = "jellyfin:library:all"
+const CACHE_KEY = "jellyfin:library:all:v2"
 const CACHE_TTL_SECONDS = 6 * 60 * 60 // 6 hours
 const PAGE_SIZE = 1000
 

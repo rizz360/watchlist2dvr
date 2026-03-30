@@ -411,7 +411,10 @@ function itemRow(item) {
   var displayTitle = (item.localizedTitle && item.localizedTitle !== item.originalTitle)
     ? esc(item.localizedTitle) + listPill + '<br><small style="color:#6b6b8a">' + esc(item.originalTitle) + '</small>'
     : esc(item.originalTitle) + listPill;
-  var imdbLink = ' <a href="https://www.imdb.com/title/'+esc(item.imdbId)+'/" target="_blank" rel="noopener">&#x2197;</a>';
+  var id = item.imdbId;
+  var extLink = id.startsWith('tmdb:')
+    ? ' <a href="https://www.themoviedb.org/movie/'+esc(id.slice(5))+'" target="_blank" rel="noopener">&#x2197;</a>'
+    : ' <a href="https://www.imdb.com/title/'+esc(id)+'/' target="_blank" rel="noopener">&#x2197;</a>';
   var ratingHtml = item.userRating ? '<span class="badge badge-rating">&#9733; '+item.userRating+'</span>' : '&mdash;';
   var badge='', epg='&mdash;', airtime='&mdash;';
   var rowClass = item.status === 'in_library' ? ' class="tr-library"' : '';
@@ -431,7 +434,7 @@ function itemRow(item) {
     badge = '<span class="badge badge-noepg">no EPG</span>';
     if (item.year) epg = String(item.year);
   }
-  return '<tr'+rowClass+'><td>'+displayTitle+imdbLink+'</td><td>'+ratingHtml+'</td><td>'+badge+'</td><td>'+epg+'</td><td>'+airtime+'</td></tr>';
+  return '<tr'+rowClass+'><td>'+displayTitle+extLink+'</td><td>'+ratingHtml+'</td><td>'+badge+'</td><td>'+epg+'</td><td>'+airtime+'</td></tr>';
 }
 
 function renderWatchlist() {
