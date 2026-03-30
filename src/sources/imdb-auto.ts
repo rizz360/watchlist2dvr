@@ -81,6 +81,8 @@ export class ImdbAutoSource implements WatchlistSource {
     private readonly minRating: number,
     private readonly pollTimeoutMs: number = 120_000,
     private readonly pollIntervalMs: number = 4_000,
+    private readonly watchlistListId?: string,
+    private readonly cfClearance?: string,
   ) {
     this.status = {
       userId,
@@ -92,6 +94,8 @@ export class ImdbAutoSource implements WatchlistSource {
     }
     // Seed with the configured at-main cookie
     this.sessionCookies.set("at-main", cookie)
+    // If a cf_clearance cookie is provided, seed it so all requests bypass Cloudflare
+    if (cfClearance) this.sessionCookies.set("cf_clearance", cfClearance)
   }
 
   getStatus(): Readonly<ImdbAutoStatus> {
@@ -158,6 +162,9 @@ export class ImdbAutoSource implements WatchlistSource {
 
   /** Discover the user's watchlist list ID (e.g. "ls056610540") from the page. */
   private async discoverWatchlistId(): Promise<string> {
+    // Config override — skip page scraping entirely (useful when Cloudflare blocks the page)
+    if (this.watchlistListId) return this.watchlistListId
+
     // Use gotScraping directly so we can inspect res.url — IMDb often issues a
     // server-side redirect from /user/{id}/watchlist/ to /list/{lsXXX}/ and
     // the list ID is embedded in that final URL.
@@ -177,7 +184,19 @@ export class ImdbAutoSource implements WatchlistSource {
     this.collectSetCookies(res.headers as Record<string, string | string[]>)
     const html = res.body
 
-    console.log(`  [imdb-auto] watchlist page: HTTP ${res.statusCode}, final URL: ${res.url}, body snippet: ${html.slice(0, 200).replace(/\s+/g, " ")}`)
+    // HTTP 202 with a minimal-HTML body is Cloudflare's managed challenge page.
+    // No amount of retrying will help without a valid cf_clearance cookie.
+    const isCfChallenge = res.statusCode === 202 || (res.statusCode !== 200 && /<title>\s*<\/title>/i.test(html))
+    if (isCfChallenge) {
+      throw new Error(
+        `Cloudflare blocked the IMDb watchlist page (HTTP ${res.statusCode}). ` +
+          `Two ways to fix this:\n` +
+          `  1. Add watchlist_list_id to your imdb_auto config: open your IMDb watchlist ` +
+          `in a browser — the URL contains /list/lsXXXXXXX.\n` +
+          `  2. Add cf_clearance to your imdb_auto config: copy the "cf_clearance" cookie ` +
+          `from your browser\'s DevTools (Application → Cookies → imdb.com).`,
+      )
+    }
 
     // Strategy 0: list ID present in the final redirect URL
     const finalUrlMatch = LIST_ID_RE.exec(res.url)

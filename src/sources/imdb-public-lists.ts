@@ -34,7 +34,10 @@ const SCRAPING_OPTIONS = {
 }
 
 export class ImdbPublicListsSource implements WatchlistSource {
-  constructor(private readonly urls: string[]) {}
+  constructor(
+    private readonly urls: string[],
+    private readonly cfClearance?: string,
+  ) {}
 
   async fetchWatchlist(): Promise<WatchlistItem[]> {
     const all: WatchlistItem[] = []
@@ -64,6 +67,7 @@ export class ImdbPublicListsSource implements WatchlistSource {
       try {
         const res = await gotScraping.get(url, {
           ...SCRAPING_OPTIONS,
+          headers: this.cfClearance ? { Cookie: `cf_clearance=${this.cfClearance}` } : undefined,
           throwHttpErrors: false,
         })
         httpStatus = res.statusCode
@@ -75,6 +79,15 @@ export class ImdbPublicListsSource implements WatchlistSource {
         console.log(`  [imdb-public] ${url}: HTTP ${httpStatus} (attempt ${attempt + 1}/${MAX_202_RETRIES + 1}), body snippet: ${html.slice(0, 200).replace(/\s+/g, " ")}`)
       }
       if (httpStatus !== 202) break
+      // If the 202 body is a Cloudflare challenge page, retrying won't help
+      if (isCloudflareChallengeHtml(html)) {
+        throw new Error(
+          `IMDb blocked ${url} with a Cloudflare challenge (HTTP 202). ` +
+            `Copy the "cf_clearance" cookie from your browser's DevTools ` +
+            `(Application → Cookies → imdb.com) and add cf_clearance: <value> ` +
+            `to your imdb_public_lists source config.`,
+        )
+      }
       if (attempt < MAX_202_RETRIES) {
         await new Promise((r) => setTimeout(r, 2_000))
       }
@@ -169,7 +182,9 @@ export function isCloudflareChallengeHtml(html: string): boolean {
     head.includes("cf-browser-verification") ||
     head.includes("cf-challenge-running") ||
     head.includes("cf_chl_opt") ||
-    (head.includes("cloudflare") && head.includes("ray id"))
+    (head.includes("cloudflare") && head.includes("ray id")) ||
+    // Cloudflare managed challenge (HTTP 202): minimal page with an empty <title>
+    /<title>\s*<\/title>/.test(head)
   )
 }
 

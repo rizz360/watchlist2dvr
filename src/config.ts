@@ -19,6 +19,8 @@ const ImdbPublicListsSourceSchema = z.object({
   type: z.literal("imdb_public_lists"),
   /** One or more public IMDb URLs (charts, user lists). Each is fetched once per run. */
   lists: z.array(z.string().url()).min(1),
+  /** Value of the "cf_clearance" cookie from your browser — bypasses Cloudflare bot detection. */
+  cf_clearance: z.string().optional(),
 })
 
 const ImdbAutoSourceSchema = z.object({
@@ -37,6 +39,17 @@ const ImdbAutoSourceSchema = z.object({
   poll_timeout_seconds: z.number().int().min(10).max(600).default(120),
   /** Seconds between each poll request while waiting for the export (default: 4). */
   poll_interval_seconds: z.number().int().min(2).max(30).default(4),
+  /**
+   * Your IMDb watchlist list ID, e.g. "ls056610540".
+   * Open your IMDb watchlist in a browser — the URL will contain /list/lsXXXXXXX.
+   * Providing this avoids page scraping to discover it (useful when Cloudflare blocks the page).
+   */
+  watchlist_list_id: z
+    .string()
+    .regex(/^ls\d{7,10}$/, 'Must be a valid IMDb list ID starting with "ls" followed by 7–10 digits')
+    .optional(),
+  /** Value of the "cf_clearance" cookie from your browser — bypasses Cloudflare bot detection. */
+  cf_clearance: z.string().optional(),
 })
 
 const SourceSchema = z.discriminatedUnion("type", [
