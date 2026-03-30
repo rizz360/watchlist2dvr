@@ -4,19 +4,26 @@ import type { WatchlistSource, WatchlistItem } from "./index.js"
 // Fetches one or more public IMDb pages (charts, user lists) and extracts
 // the embedded title entries — no authentication required.
 //
-// Supported URL patterns (anything with __NEXT_DATA__ movie entries):
+// Supported URL patterns:
 //   https://www.imdb.com/chart/top/           IMDb Top 250
 //   https://www.imdb.com/chart/popular/       Most popular
 //   https://www.imdb.com/chart/moviemeter/    MovieMeter
 //   https://www.imdb.com/list/ls000024621/    Any public user list
 //
-// Implementation: fetch the HTML page, parse the __NEXT_DATA__ JSON blob
-// embedded by Next.js, then recursively walk the object tree to find all
-// title entries (objects with an "id" matching tt\d+ and an associated title
-// text). This is resilient across different IMDb page types and layouts.
+// Implementation: fetch the HTML page, then try two strategies in order:
+//   1. Parse the __NEXT_DATA__ JSON blob embedded by Next.js (older pages)
+//      and recursively walk the object tree to find all title entries.
+//   2. Parse JSON-LD (<script type="application/ld+json">) blocks which IMDb
+//      uses on chart pages (ItemList schema) after migrating away from Next.js.
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+
+/** Regex that captures the tt-identifier from an IMDb title URL path segment. */
+const IMDB_TITLE_ID_RE = /\/title\/(tt\d{7,10})\//
+
+const MIN_VALID_YEAR = 1800
+const MAX_VALID_YEAR = 2200
 
 export class ImdbPublicListsSource implements WatchlistSource {
   constructor(private readonly urls: string[]) {}
@@ -56,25 +63,36 @@ export class ImdbPublicListsSource implements WatchlistSource {
       throw new Error(`Failed to fetch ${url}: ${(err as Error).message}`)
     }
 
-    const ndMatch = html.match(
-      /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/,
-    )
-    if (!ndMatch) {
-      throw new Error(
-        `No embedded page data found at ${url}. ` +
-          `Make sure the URL is a public IMDb list or chart page.`,
-      )
-    }
-
-    let data: unknown
-    try {
-      data = JSON.parse(ndMatch[1])
-    } catch {
-      throw new Error(`Failed to parse embedded page data from ${url}`)
-    }
-
     const found = new Map<string, { title: string; year?: number }>()
-    walkForTitles(data, found)
+
+    // Strategy 1: __NEXT_DATA__ (Next.js embedded JSON, used on older IMDb pages)
+    const ndMatch = html.match(
+      /<script[^>]+id="__NEXT_DATA__"[^>]*type="application\/json"[^>]*>([\s\S]*?)<\/script>|<script[^>]+type="application\/json"[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/,
+    )
+    if (ndMatch) {
+      const rawJson = ndMatch[1] ?? ndMatch[2]
+      try {
+        const data = JSON.parse(rawJson)
+        walkForTitles(data, found)
+      } catch {
+        // ignore parse errors and fall through to the next strategy
+      }
+    }
+
+    // Strategy 2: JSON-LD (application/ld+json) — used by IMDb chart pages
+    // after their migration away from Next.js
+    if (found.size === 0) {
+      const ldJsonRegex = /<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g
+      let ldMatch: RegExpExecArray | null
+      while ((ldMatch = ldJsonRegex.exec(html)) !== null) {
+        try {
+          const ldData: unknown = JSON.parse(ldMatch[1])
+          walkForTitlesFromLdJson(ldData, found)
+        } catch {
+          // skip unparseable blocks
+        }
+      }
+    }
 
     if (found.size === 0) {
       throw new Error(
@@ -177,6 +195,76 @@ function extractYear(node: unknown): number | undefined {
   if (node && typeof node === "object") {
     const obj = node as Record<string, unknown>
     if (typeof obj["year"] === "number") return obj["year"]
+  }
+  return undefined
+}
+
+/**
+ * Walk a JSON-LD object and collect title entries from IMDb chart/list pages.
+ *
+ * IMDb embeds structured data in this shape:
+ *   { "@type": "ItemList", "itemListElement": [
+ *     { "@type": "ListItem", "item": {
+ *         "@type": "Movie", "url": "https://www.imdb.com/title/tt0111161/",
+ *         "name": "The Shawshank Redemption" } },
+ *     ...
+ *   ] }
+ *
+ * Arrays and nested objects are also walked so that variant structures are
+ * handled without special-casing each one.
+ *
+ * @internal exported for testing
+ */
+export function walkForTitlesFromLdJson(
+  node: unknown,
+  found: Map<string, { title: string; year?: number }>,
+): void {
+  if (!node || typeof node !== "object") return
+
+  if (Array.isArray(node)) {
+    for (const item of node) walkForTitlesFromLdJson(item, found)
+    return
+  }
+
+  const obj = node as Record<string, unknown>
+
+  // If this object has a URL pointing to an IMDb title, extract it
+  const urlVal =
+    typeof obj["url"] === "string"
+      ? obj["url"]
+      : typeof obj["@id"] === "string"
+        ? obj["@id"]
+        : null
+  if (urlVal) {
+    const idMatch = urlVal.match(IMDB_TITLE_ID_RE)
+    if (idMatch) {
+      const imdbId = idMatch[1]
+      if (!found.has(imdbId)) {
+        const title = typeof obj["name"] === "string" ? obj["name"] : null
+        if (title) {
+          const year = extractYearFromLdJson(obj)
+          found.set(imdbId, { title, year })
+        }
+      }
+    }
+  }
+
+  // Recurse into all values
+  for (const val of Object.values(obj)) {
+    walkForTitlesFromLdJson(val, found)
+  }
+}
+
+/** Extract a release year from a JSON-LD object. */
+function extractYearFromLdJson(obj: Record<string, unknown>): number | undefined {
+  // datePublished: "1994-09-10" or "1994"
+  if (typeof obj["datePublished"] === "string") {
+    const y = parseInt(obj["datePublished"], 10)
+    if (y > MIN_VALID_YEAR && y < MAX_VALID_YEAR) return y
+  }
+  if (typeof obj["startDate"] === "string") {
+    const y = parseInt(obj["startDate"], 10)
+    if (y > MIN_VALID_YEAR && y < MAX_VALID_YEAR) return y
   }
   return undefined
 }

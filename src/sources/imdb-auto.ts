@@ -20,6 +20,9 @@ import type { WatchlistSource, WatchlistItem } from "./index.js"
 
 const GQL_URL = "https://api.graphql.imdb.com/"
 
+/** Captures an IMDb list ID (ls-number) from a string. */
+const LIST_ID_RE = /ls\d{7,10}/
+
 // GraphQL mutation to start a list (watchlist / custom list) export
 const START_LIST_EXPORT = `
   mutation StartListExport($listId: ID!) {
@@ -162,22 +165,43 @@ export class ImdbAutoSource implements WatchlistSource {
     const html = await this.warmPage(
       `https://www.imdb.com/user/${this.userId}/watchlist/`,
     )
+
+    const lsCapture = LIST_ID_RE.source // ls\d{7,10}
+
+    // Strategy 1: search inside __NEXT_DATA__ JSON (older IMDb pages)
     const ndm = html.match(
-      /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/,
+      /<script[^>]+id="__NEXT_DATA__"[^>]*type="application\/json"[^>]*>([\s\S]*?)<\/script>|<script[^>]+type="application\/json"[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/,
     )
-    if (!ndm) throw new Error("Could not find page data on IMDb watchlist page")
-    const str = ndm[1]
-    // The watchlist list ID appears as "ls########" in the page JSON
-    const hit =
-      str.match(/"listId"\s*:\s*"(ls\d+)"/) ??
-      str.match(/"(ls\d{7,10})"/)
-    if (!hit) {
-      throw new Error(
-        `Could not find watchlist list ID for user ${this.userId}. ` +
-          `Make sure the at-main cookie belongs to this user and the watchlist is not empty.`,
-      )
+    if (ndm) {
+      const str = ndm[1] ?? ndm[2]
+      const hit =
+        str.match(/"listId"\s*:\s*"(ls\d+)"/) ??
+        str.match(new RegExp(`"(${lsCapture})"`))
+      if (hit) return hit[1]
     }
-    return hit[1]
+
+    // Strategy 2: canonical <link> tag — IMDb often redirects to /list/ls######/
+    const canonicalMatch =
+      html.match(new RegExp(`<link[^>]+rel=["']canonical["'][^>]+href=["'][^"']*/(${lsCapture})[/"'][^>]*>`)) ??
+      html.match(new RegExp(`<link[^>]+href=["'][^"']*/(${lsCapture})[/"'][^>]*rel=["']canonical["'][^>]*>`))
+    if (canonicalMatch) return canonicalMatch[1]
+
+    // Strategy 3: any <meta> tag whose content looks like a list ID
+    const metaMatch = html.match(new RegExp(`<meta[^>]+content=["'](${lsCapture})["'][^>]*>`))
+    if (metaMatch) return metaMatch[1]
+
+    // Strategy 4: list ID in any URL path within the page (href/src/data-url attributes)
+    const urlPathMatch = html.match(new RegExp(`/list/(${lsCapture})/`))
+    if (urlPathMatch) return urlPathMatch[1]
+
+    // Strategy 5: bare ls-number anywhere in the page (last resort)
+    const bareMatch = html.match(new RegExp(`"(${lsCapture})"`))
+    if (bareMatch) return bareMatch[1]
+
+    throw new Error(
+      `Could not find watchlist list ID for user ${this.userId}. ` +
+        `Make sure the at-main cookie belongs to this user and the watchlist is not empty.`,
+    )
   }
 
   /** Call the IMDb GraphQL API. */
