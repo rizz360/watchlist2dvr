@@ -15,6 +15,22 @@ const ImdbCsvSourceSchema = z.object({
   min_rating: z.number().int().min(0).max(10).default(0),
 })
 
+const TmdbListsSourceSchema = z.object({
+  type: z.literal("tmdb_lists"),
+  /**
+   * List specs to fetch. Each entry is one of:
+   *   "collection:<id>"  — TMDB collection/franchise (e.g. "collection:9485" for Fast & Furious)
+   *   "list:<id>"        — any public TMDB custom list
+   *   "popular"          — TMDB popular movies (paginated, see `pages`)
+   *   "top_rated"        — TMDB top-rated movies
+   *   "now_playing"      — currently in cinemas
+   *   "upcoming"         — coming soon
+   */
+  lists: z.array(z.string().min(1)).min(1),
+  /** Number of pages to fetch for paginated named endpoints (popular, top_rated, etc). Default: 3 = ~60 movies. */
+  pages: z.number().int().min(1).max(20).default(3),
+})
+
 const ImdbPublicListsSourceSchema = z.object({
   type: z.literal("imdb_public_lists"),
   /** One or more public IMDb URLs (charts, user lists). Each is fetched once per run. */
@@ -64,6 +80,7 @@ const SourceSchema = z.discriminatedUnion("type", [
   ImdbCsvSourceSchema,
   ImdbAutoSourceSchema,
   ImdbPublicListsSourceSchema,
+  TmdbListsSourceSchema,
 ])
 
 const LibraryJellyfinSchema = z.object({

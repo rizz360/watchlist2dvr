@@ -7,6 +7,7 @@ import { TraktSource } from "./sources/trakt.js"
 import { ImdbCsvSource } from "./sources/imdb-csv.js"
 import { ImdbAutoSource } from "./sources/imdb-auto.js"
 import { ImdbPublicListsSource } from "./sources/imdb-public-lists.js"
+import { TmdbListsSource } from "./sources/tmdb-lists.js"
 import type { WatchlistSource, WatchlistItem } from "./sources/index.js"
 import { JellyfinLibraryChecker } from "./library/jellyfin.js"
 import { PlexLibraryChecker } from "./library/plex.js"
@@ -42,6 +43,7 @@ function sourceIdFromConfig(s: SourceConfig): string {
   if (s.type === "trakt") return `trakt:${s.username}`
   if (s.type === "imdb_auto") return `imdb_auto:${s.user_id}`
   if (s.type === "imdb_public_lists") return `imdb_public_lists:${s.lists.join(",")}`
+  if (s.type === "tmdb_lists") return `tmdb_lists:${s.lists.join(",")}`
   return `imdb_csv:${s.path}`
 }
 
@@ -66,6 +68,7 @@ function buildDeps(config: Config, redis: Redis): RunDeps {
         return imdbAutoSources.find((inst) => inst.getStatus().userId === s.user_id)!
       }
       if (s.type === "imdb_public_lists") return new ImdbPublicListsSource(s.lists, s.extra_cookies)
+      if (s.type === "tmdb_lists") return new TmdbListsSource(config.tmdb.api_key, s.lists, s.pages, redis)
       return new ImdbCsvSource(s.path, s.min_rating)
     }),
     checkers:

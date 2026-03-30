@@ -64,6 +64,30 @@ sources:
   #   #   session-token: "YOUR_SESSION_TOKEN"
   #   #   ubid-main: "YOUR_UBID_MAIN"
 
+  # --- TMDB Lists ---
+  # Fetch movies from TMDB collections (franchises), custom lists, or curated
+  # endpoints — using your existing TMDB API key. No bot detection issues.
+  #
+  # Results are cached: TMDB movie ID → IMDb ID mappings are stored in Redis
+  # (30-day TTL). Franchise collections barely change, so after the first run
+  # all lookups are served from Redis. If the TMDB API is unavailable, the last
+  # successful fetch is used automatically (same fallback as all other sources).
+  #
+  # Finding collection IDs: open any movie on themoviedb.org, click the
+  # franchise/collection link — the ID is in the URL: /collection/9485
+  #
+  # - type: tmdb_lists
+  #   lists:
+  #     - "collection:9485"    # Fast & Furious
+  #     - "collection:645"     # James Bond (007)
+  #     - "collection:131296"  # John Wick
+  #     - "list:12345"         # any public TMDB custom list
+  #     - "top_rated"          # TMDB top-rated movies  (see `pages`)
+  #     - "popular"            # TMDB popular right now (see `pages`)
+  #     - "now_playing"        # currently in cinemas
+  #     - "upcoming"           # coming soon
+  #   pages: 3                 # pages to fetch for popular/top_rated/etc (20 movies each, default: 3)
+
   # --- IMDb CSV (manual export) ---
   # Drop any IMDb export CSV (watchlist, ratings, etc.) into the directory —
   # type is auto-detected by headers.
