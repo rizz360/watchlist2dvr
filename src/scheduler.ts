@@ -50,7 +50,7 @@ function buildDeps(config: Config, redis: Redis): RunDeps {
   // server share the same instances (status tracking, refresh button).
   const imdbAutoSources = config.sources
     .filter((s): s is Extract<typeof s, { type: "imdb_auto" }> => s.type === "imdb_auto")
-    .map((s) => new ImdbAutoSource(s.user_id, s.cookie, s.lists, s.min_rating, s.poll_timeout_seconds * 1000, s.poll_interval_seconds * 1000, s.watchlist_list_id, s.cf_clearance))
+    .map((s) => new ImdbAutoSource(s.user_id, s.cookie, s.lists, s.min_rating, s.poll_timeout_seconds * 1000, s.poll_interval_seconds * 1000, s.watchlist_list_id, s.extra_cookies))
 
   return {
     config,
@@ -65,7 +65,7 @@ function buildDeps(config: Config, redis: Redis): RunDeps {
         // Reuse the already-constructed instance so status is shared
         return imdbAutoSources.find((inst) => inst.getStatus().userId === s.user_id)!
       }
-      if (s.type === "imdb_public_lists") return new ImdbPublicListsSource(s.lists, s.cf_clearance)
+      if (s.type === "imdb_public_lists") return new ImdbPublicListsSource(s.lists, s.extra_cookies)
       return new ImdbCsvSource(s.path, s.min_rating)
     }),
     checkers:

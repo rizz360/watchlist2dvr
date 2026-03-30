@@ -19,8 +19,11 @@ const ImdbPublicListsSourceSchema = z.object({
   type: z.literal("imdb_public_lists"),
   /** One or more public IMDb URLs (charts, user lists). Each is fetched once per run. */
   lists: z.array(z.string().url()).min(1),
-  /** Value of the "cf_clearance" cookie from your browser — bypasses Cloudflare bot detection. */
-  cf_clearance: z.string().optional(),
+  /**
+   * Additional cookies to send with every request, e.g. aws-waf-token, session-id.
+   * Copy values from DevTools: Application → Cookies → https://www.imdb.com
+   */
+  extra_cookies: z.record(z.string()).optional().default({}),
 })
 
 const ImdbAutoSourceSchema = z.object({
@@ -48,8 +51,12 @@ const ImdbAutoSourceSchema = z.object({
     .string()
     .regex(/^ls\d{7,10}$/, 'Must be a valid IMDb list ID starting with "ls" followed by 7–10 digits')
     .optional(),
-  /** Value of the "cf_clearance" cookie from your browser — bypasses Cloudflare bot detection. */
-  cf_clearance: z.string().optional(),
+  /**
+   * Additional cookies to send with every request, e.g. aws-waf-token, session-id, ubid-main.
+   * Copy values from DevTools: Application → Cookies → https://www.imdb.com
+   * These are merged with the at-main cookie and any session cookies gathered during warm-up.
+   */
+  extra_cookies: z.record(z.string()).optional().default({}),
 })
 
 const SourceSchema = z.discriminatedUnion("type", [

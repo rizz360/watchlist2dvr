@@ -82,7 +82,7 @@ export class ImdbAutoSource implements WatchlistSource {
     private readonly pollTimeoutMs: number = 120_000,
     private readonly pollIntervalMs: number = 4_000,
     private readonly watchlistListId?: string,
-    private readonly cfClearance?: string,
+    private readonly extraCookies: Record<string, string> = {},
   ) {
     this.status = {
       userId,
@@ -92,10 +92,9 @@ export class ImdbAutoSource implements WatchlistSource {
       lastFetchCount: 0,
       lastError: null,
     }
-    // Seed with the configured at-main cookie
+    // Seed with the configured at-main cookie, then any extra cookies
     this.sessionCookies.set("at-main", cookie)
-    // If a cf_clearance cookie is provided, seed it so all requests bypass Cloudflare
-    if (cfClearance) this.sessionCookies.set("cf_clearance", cfClearance)
+    for (const [k, v] of Object.entries(extraCookies)) this.sessionCookies.set(k, v)
   }
 
   getStatus(): Readonly<ImdbAutoStatus> {
@@ -189,12 +188,13 @@ export class ImdbAutoSource implements WatchlistSource {
     const isCfChallenge = res.statusCode === 202 || (res.statusCode !== 200 && /<title>\s*<\/title>/i.test(html))
     if (isCfChallenge) {
       throw new Error(
-        `Cloudflare blocked the IMDb watchlist page (HTTP ${res.statusCode}). ` +
+        `IMDb blocked the watchlist page with a bot-detection challenge (HTTP ${res.statusCode}). ` +
           `Two ways to fix this:\n` +
-          `  1. Add watchlist_list_id to your imdb_auto config: open your IMDb watchlist ` +
-          `in a browser — the URL contains /list/lsXXXXXXX.\n` +
-          `  2. Add cf_clearance to your imdb_auto config: copy the "cf_clearance" cookie ` +
-          `from your browser\'s DevTools (Application → Cookies → imdb.com).`,
+          `  1. Add watchlist_list_id to your imdb_auto config: find it in the IMDb watchlist ` +
+          `page HTML (right-click → View Page Source, search for \'ls0\').\n` +
+          `  2. Add extra_cookies to your imdb_auto config with your full browser session: ` +
+          `copy aws-waf-token, session-id, session-token and ubid-main from DevTools ` +
+          `(Application → Cookies → https://www.imdb.com).`,
       )
     }
 

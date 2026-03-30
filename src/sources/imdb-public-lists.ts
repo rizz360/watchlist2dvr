@@ -36,7 +36,7 @@ const SCRAPING_OPTIONS = {
 export class ImdbPublicListsSource implements WatchlistSource {
   constructor(
     private readonly urls: string[],
-    private readonly cfClearance?: string,
+    private readonly extraCookies: Record<string, string> = {},
   ) {}
 
   async fetchWatchlist(): Promise<WatchlistItem[]> {
@@ -65,11 +65,15 @@ export class ImdbPublicListsSource implements WatchlistSource {
     const MAX_202_RETRIES = 3
     for (let attempt = 0; attempt <= MAX_202_RETRIES; attempt++) {
       try {
-        const res = await gotScraping.get(url, {
-          ...SCRAPING_OPTIONS,
-          headers: this.cfClearance ? { Cookie: `cf_clearance=${this.cfClearance}` } : undefined,
-          throwHttpErrors: false,
-        })
+        const cookieEntries = Object.entries(this.extraCookies)
+          const cookieHeader = cookieEntries.length
+            ? cookieEntries.map(([k, v]) => `${k}=${v}`).join("; ")
+            : undefined
+          const res = await gotScraping.get(url, {
+            ...SCRAPING_OPTIONS,
+            headers: cookieHeader ? { Cookie: cookieHeader } : undefined,
+            throwHttpErrors: false,
+          })
         httpStatus = res.statusCode
         html = res.body
       } catch (err) {
@@ -82,10 +86,10 @@ export class ImdbPublicListsSource implements WatchlistSource {
       // If the 202 body is a Cloudflare challenge page, retrying won't help
       if (isCloudflareChallengeHtml(html)) {
         throw new Error(
-          `IMDb blocked ${url} with a Cloudflare challenge (HTTP 202). ` +
-            `Copy the "cf_clearance" cookie from your browser's DevTools ` +
-            `(Application → Cookies → imdb.com) and add cf_clearance: <value> ` +
-            `to your imdb_public_lists source config.`,
+          `IMDb blocked ${url} with a bot-detection challenge (HTTP 202). ` +
+            `Add extra_cookies to your imdb_public_lists config with your full browser session: ` +
+            `copy aws-waf-token, session-id, session-token and ubid-main from DevTools ` +
+            `(Application \u2192 Cookies \u2192 https://www.imdb.com).`,
         )
       }
       if (attempt < MAX_202_RETRIES) {
@@ -96,8 +100,8 @@ export class ImdbPublicListsSource implements WatchlistSource {
     if (httpStatus === 403 || httpStatus === 429) {
       throw new Error(
         `IMDb rejected the request with HTTP ${httpStatus} for ${url}. ` +
-          `This is likely Cloudflare bot detection. ` +
-          `A plain HTTP request is no longer sufficient to access IMDb pages.`,
+          `Add extra_cookies to your imdb_public_lists config (aws-waf-token, session-id, ` +
+          `session-token, ubid-main) from DevTools (Application \u2192 Cookies \u2192 https://www.imdb.com).`,
       )
     }
 

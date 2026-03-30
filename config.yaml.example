@@ -8,11 +8,21 @@ sources:
   # Fetch any number of public IMDb URLs per run — no authentication required.
   # Supported: charts (Top 250, Popular, MovieMeter) and public user lists.
   #
+  # IMDb uses AWS WAF bot detection which may return HTTP 202 challenge pages.
+  # If that happens, add extra_cookies from your browser DevTools:
+  #   Application → Cookies → https://www.imdb.com → copy these values:
+  #   aws-waf-token, session-id, session-token, ubid-main
+  #
   # - type: imdb_public_lists
   #   lists:
   #     - https://www.imdb.com/chart/top/        # IMDb Top 250
   #     - https://www.imdb.com/chart/popular/    # Most popular right now
   #     - https://www.imdb.com/list/ls000024621/ # Any public user list
+  #   extra_cookies:                             # optional — add if you get HTTP 202
+  #     aws-waf-token: "YOUR_AWS_WAF_TOKEN"
+  #     session-id: "YOUR_SESSION_ID"
+  #     session-token: "YOUR_SESSION_TOKEN"
+  #     ubid-main: "YOUR_UBID_MAIN"
 
   # --- IMDb Auto-download ---
   # Directly downloads your IMDb watchlist and/or ratings as CSV using a
@@ -40,6 +50,19 @@ sources:
   #   min_rating: 1   # for ratings: skip movies rated below this (1–10)
   #   poll_timeout_seconds: 120   # optional: max wait for IMDb export (default: 120)
   #   poll_interval_seconds: 4    # optional: polling cadence in seconds (default: 4)
+  #
+  #   # If IMDb's watchlist page is blocked by bot detection, provide your list ID
+  #   # directly: open the watchlist in a browser, right-click → View Page Source,
+  #   # search for 'ls0' to find a value like ls056610540.
+  #   # watchlist_list_id: "ls056610540"
+  #
+  #   # If you still get HTTP 202 challenges, add extra_cookies from your browser:
+  #   #   Application → Cookies → https://www.imdb.com → copy these values:
+  #   # extra_cookies:
+  #   #   aws-waf-token: "YOUR_AWS_WAF_TOKEN"
+  #   #   session-id: "YOUR_SESSION_ID"
+  #   #   session-token: "YOUR_SESSION_TOKEN"
+  #   #   ubid-main: "YOUR_UBID_MAIN"
 
   # --- IMDb CSV (manual export) ---
   # Drop any IMDb export CSV (watchlist, ratings, etc.) into the directory —
