@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { walkForTitlesFromLdJson } from "./imdb-public-lists.js"
+import { walkForTitlesFromLdJson, isCloudflareChallengeHtml } from "./imdb-public-lists.js"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -174,5 +174,52 @@ describe("watchlist list-ID discovery patterns", () => {
     const html = `<a href="/list/ls12345/">short</a>`
     const m = html.match(/\/list\/(ls\d{7,10})\//)
     expect(m).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// isCloudflareChallengeHtml
+// ---------------------------------------------------------------------------
+
+describe("isCloudflareChallengeHtml", () => {
+  it('detects "Just a moment" challenge page', () => {
+    const html = `<html><head><title>Just a moment...</title></head><body></body></html>`
+    expect(isCloudflareChallengeHtml(html)).toBe(true)
+  })
+
+  it("detects cf-browser-verification page", () => {
+    const html = `<html><body><form id="cf-browser-verification"></form></body></html>`
+    expect(isCloudflareChallengeHtml(html)).toBe(true)
+  })
+
+  it("detects cf-challenge-running page", () => {
+    const html = `<html><body class="cf-challenge-running"></body></html>`
+    expect(isCloudflareChallengeHtml(html)).toBe(true)
+  })
+
+  it("detects cf_chl_opt JavaScript variable", () => {
+    const html = `<html><body><script>window.cf_chl_opt = {...}</script></body></html>`
+    expect(isCloudflareChallengeHtml(html)).toBe(true)
+  })
+
+  it("detects Cloudflare + Ray ID combination", () => {
+    const html = `<html><body>Performance &amp; security by Cloudflare | Ray ID: abc123def456</body></html>`
+    expect(isCloudflareChallengeHtml(html)).toBe(true)
+  })
+
+  it("returns false for real IMDb HTML", () => {
+    const html = `<html><head><title>IMDb Top 250 Movies</title></head><body>
+      <script type="application/ld+json">{"@type":"ItemList"}</script>
+    </body></html>`
+    expect(isCloudflareChallengeHtml(html)).toBe(false)
+  })
+
+  it("returns false for empty string", () => {
+    expect(isCloudflareChallengeHtml("")).toBe(false)
+  })
+
+  it("is case-insensitive", () => {
+    const html = `<html><head><title>JUST A MOMENT...</title></head><body></body></html>`
+    expect(isCloudflareChallengeHtml(html)).toBe(true)
   })
 })
