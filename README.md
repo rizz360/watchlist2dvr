@@ -35,6 +35,7 @@ Every layer is a swappable adapter. The matching engine never knows which source
 - **IMDb public lists (no auth)** — the `imdb_public_lists` source fetches any public IMDb URL (Top 250, MovieMeter, Popular, public user lists) by parsing the embedded Next.js page data. No cookie or account required. Just point it at one or more URLs.
 - **IMDb watchlist + ratings (auto-download)** — the `imdb_auto` source fetches your watchlist and ratings CSV directly from IMDb using a session cookie. No browser automation, no Python, no file management — just paste your `at-main` cookie. See [IMDb auto-download](#imdb-auto-download) below.
 - **IMDb watchlist + ratings (manual CSV)** — point `path` at a directory; all CSVs are loaded automatically. Ratings CSVs filter by `min_rating`. Only Movies and TV Movies are processed (video games, shorts, and series are skipped).
+- **TMDB lists** — the `tmdb_lists` source pulls movies from TMDB collections (`collection:<id>`), custom TMDB lists (`list:<id>`), and named endpoints (`popular`, `top_rated`, `now_playing`, `upcoming`). No IMDb account required — uses your existing TMDB API key.
 - **Localized title matching** — resolves titles in your preferred language via TMDB (e.g. German, French, …)
 - **Library check** — skips movies already in Plex or Jellyfin. The entire library is fetched once and indexed as an in-memory Set — no per-item HTTP requests.
 - **Deterministic matching** — lowercase → strip articles → strip editions → strip year suffixes → year filter. Fuzzy matching is opt-in fallback only. Multiple airings of the same movie resolve to the earliest broadcast.
@@ -96,7 +97,24 @@ sources:
       - https://www.imdb.com/list/ls000024621/ # any public user list
 ```
 
-**Option C — Manual CSV export**
+**Option D — TMDB collections and lists**
+
+The `tmdb_lists` source pulls movies from TMDB without any IMDb account. Supports franchise collections, custom TMDB lists, and named popularity endpoints:
+
+```yaml
+sources:
+  - type: tmdb_lists
+    lists:
+      - "collection:9485"   # Fast & Furious (TMDB franchise collection)
+      - "collection:645"    # James Bond
+      - "list:12179"        # any public TMDB custom list
+      - "top_rated"         # named: popular | top_rated | now_playing | upcoming
+    pages: 5                # pages to fetch for named endpoints
+```
+
+The TMDB API key from your `tmdb` config block is reused — no separate credentials needed.
+
+**Option E — Manual CSV export**
 
 - **Watchlist**: [imdb.com/list/watchlist](https://www.imdb.com/list/watchlist) → Export
 - **Ratings** (optional): [imdb.com/user/ur.../ratings](https://www.imdb.com/user/) → Export
@@ -179,6 +197,16 @@ sources:
   #   path: /data           # directory — all .csv files are loaded automatically
   #   min_rating: 5         # for ratings CSVs: only include movies rated ≥ this
 
+  # TMDB lists: collections, custom lists, or named endpoints.
+  # Uses your existing TMDB API key — no extra account needed.
+  # - type: tmdb_lists
+  #   lists:
+  #     - "collection:9485"    # TMDB franchise collection (e.g. Fast & Furious)
+  #     - "collection:645"     # James Bond
+  #     - "list:12179"         # any public TMDB custom list
+  #     - "top_rated"          # named endpoint: popular | top_rated | now_playing | upcoming
+  #   pages: 3                 # pages to fetch for named endpoints (collections ignore this)
+
   # - type: trakt
   #   client_id: ""
   #   client_secret: ""
@@ -221,6 +249,8 @@ dvr:
 #   url: http://plex:32400
 #   token: ""
 #   library_section_id: 6       # optional: DVR Movies library section ID (default: 6)
+#   epg_provider: "tv.plex.providers.epg.xmltv:9"  # required: EPG provider ID
+#                                                    # find it: GET /media/providers?X-Plex-Token=...
 
 # --- State / cache ---
 state:
@@ -263,6 +293,7 @@ Most DIY projects fail here. watchlist2dvr uses a deterministic pipeline — no 
 4. Filter candidates by year (±`year_tolerance`, skipped if EPG has no year and `strict_year_match: false`)
 5. If multiple airings remain → pick the earliest broadcast
 6. If `fuzzy_enabled: true` → Fuse.js as last resort
+7. EPG events shorter than 60 minutes are discarded before matching — XMLTV guide data occasionally misclassifies TV series episodes as movies (e.g. a 10-minute episode tagged as `type=movie`); the duration floor filters these out
 
 ### Why TMDB?
 
@@ -386,7 +417,7 @@ Available at `http://localhost:3000` (or your configured port).
 | Plex DVR provider ID | process memory | until restart |
 
 To clear all caches: `docker compose exec redis redis-cli FLUSHDB`  
-To force a Plex re-index: `docker compose exec redis redis-cli del plex:library:all`
+To force a Plex re-index: `docker compose exec redis redis-cli del plex:library:all:v2`
 
 ---
 
@@ -422,7 +453,7 @@ dns:
 
 ```
 src/
-├── sources/          # WatchlistSource interface + Trakt, IMDb CSV, IMDb auto-download adapters
+├── sources/          # WatchlistSource interface + Trakt, IMDb CSV, IMDb auto-download, TMDB lists adapters
 ├── library/          # LibraryChecker interface + Plex, Jellyfin adapters
 ├── resolvers/        # TMDB localization resolver (Redis-cached)
 ├── matching/
@@ -462,5 +493,6 @@ Tests cover the normalization pipeline and matching engine. All 20 tests run in 
 - [ ] Manual match override via web UI
 - [ ] Notification on successful schedule (webhook / Apprise)
 - [ ] Series / episode support
+- [x] TMDB lists / collections / named endpoints source (`tmdb_lists`)
 - [x] Plex DVR backend (EPG via Plex Live TV + subscriptions API)
 - [ ] Jellyfin DVR backend
