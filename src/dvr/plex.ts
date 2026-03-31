@@ -91,17 +91,9 @@ export class PlexDvrAdapter implements DvrAdapter {
   async scheduleEvent(eventId: string): Promise<void> {
     const providerId = await this.getProviderId()
     // The EPG returns ratingKeys double-encoded (e.g. tv%2Eplex%2Exmltv%3A%2F%2Fmovie%2FNew%2520Moon...).
-    // Decoding exactly ONCE yields the canonical Plex URI used internally:
-    //   tv.plex.xmltv://movie/New%20Moon...
-    // Over-decoding (fully) produces literal spaces which Plex cannot resolve → blank subscription.
-    let ratingKey: string
-    try {
-      ratingKey = decodeURIComponent(eventId)
-    } catch {
-      ratingKey = eventId
-    }
-    console.log(`  [dvr:plex] scheduleEvent: raw eventId=${JSON.stringify(eventId)} decoded=${JSON.stringify(ratingKey)}`)
-    // Build query params (URLSearchParams encodes bracket chars → %5B%5D, which Plex accepts)
+    // Plex stores hints[ratingKey] as the value it receives after one HTTP query-string URL-decode.
+    // So to make Plex store (and resolve) the double-encoded ratingKey, we must encode it one more
+    // time with encodeURIComponent — the HTTP layer decodes once, leaving the double-encoded form.
     const qs = new URLSearchParams({
       "X-Plex-Token": this.token,
       type: "1",
@@ -109,11 +101,7 @@ export class PlexDvrAdapter implements DvrAdapter {
       "params[mediaProviderID]": String(providerId),
       "prefs[oneShot]": "true",
     }).toString()
-    // Append hints[ratingKey] using encodeURIComponent so the HTTP layer decodes it exactly
-    // once and Plex receives the canonical (fully-decoded) ratingKey for the EPG item lookup.
-    const url = `${this.baseUrl}/media/subscriptions?${qs}&hints[ratingKey]=${encodeURIComponent(ratingKey)}`
-    console.log(`  [dvr:plex] Subscribing: ${ratingKey}`)
-    console.log(`  [dvr:plex] POST url (redacted token): ${url.replace(this.token, "REDACTED")}`)
+    const url = `${this.baseUrl}/media/subscriptions?${qs}&hints[ratingKey]=${encodeURIComponent(eventId)}`
     await axios.post(url, null, {
       headers: { Accept: "application/json" },
       httpAgent: ipv4Agent,
