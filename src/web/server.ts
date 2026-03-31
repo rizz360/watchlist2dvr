@@ -3,12 +3,14 @@ import type { Redis } from "ioredis"
 import type { DvrAdapter } from "../dvr/index.js"
 import type { HistoryStore } from "../state/history.js"
 import type { ImdbAutoSource } from "../sources/imdb-auto.js"
+import type { SourceConfig } from "../config.js"
 
 export interface WebDeps {
   dvr: DvrAdapter
   history: HistoryStore
   redis: Redis
   imdbAutoSources?: ImdbAutoSource[]
+  sourceConfigs?: SourceConfig[]
 }
 
 export function startWebServer(deps: WebDeps, port: number): void {
@@ -167,11 +169,22 @@ export function startWebServer(deps: WebDeps, port: number): void {
   // --- IMDb Auto-download source status and refresh ---
 
   app.get("/api/sources", (_req, res) => {
-    const sources = (deps.imdbAutoSources ?? []).map((s) => ({
-      type: "imdb_auto",
-      ...s.getStatus(),
-      // cookie is never exposed through the API
-    }))
+    const autoByUserId = new Map(
+      (deps.imdbAutoSources ?? []).map((s) => [s.getStatus().userId, s]),
+    )
+    const sources = (deps.sourceConfigs ?? []).map((cfg) => {
+      if (cfg.type === "imdb_auto") {
+        const live = autoByUserId.get(cfg.user_id)
+        return live
+          ? { type: "imdb_auto", ...live.getStatus() }
+          : { type: "imdb_auto", userId: cfg.user_id, lists: cfg.lists }
+      }
+      if (cfg.type === "trakt") return { type: "trakt", username: cfg.username }
+      if (cfg.type === "imdb_csv") return { type: "imdb_csv", path: cfg.path, minRating: cfg.min_rating }
+      if (cfg.type === "imdb_public_lists") return { type: "imdb_public_lists", lists: cfg.lists }
+      if (cfg.type === "tmdb_lists") return { type: "tmdb_lists", lists: cfg.lists, pages: cfg.pages }
+      return cfg
+    })
     res.json({ sources })
   })
 
@@ -622,28 +635,49 @@ function lookupCache() {
 
 function loadSources() {
   fetch('/api/sources').then(function(r){return r.json()}).then(function(data) {
-    var sources = (data.sources || []).filter(function(s){ return s.type === 'imdb_auto'; });
+    var sources = data.sources || [];
     var el = document.getElementById('src-auto-status');
     if (!sources.length) {
-      el.innerHTML = '<p class="sec">IMDb Auto-download</p><p style="color:#6b6b8a;font-size:.85rem;padding:.4rem 0">No <code>imdb_auto</code> sources configured yet &mdash; see the guide below.</p>';
+      el.innerHTML = '<p class="sec">Sources</p><p style="color:#6b6b8a;font-size:.85rem;padding:.4rem 0">No sources configured.</p>';
       return;
     }
-    var html = '<p class="sec">IMDb Auto-download</p>';
+    var html = '<p class="sec">Sources</p>';
     sources.forEach(function(s) {
-      var icon = s.lastFetchStatus === 'ok'    ? '<span class="src-ok">&#10003;</span>'
-               : s.lastFetchStatus === 'error' ? '<span class="src-err">&#10007;</span>'
-               :                                 '<span class="src-never">&mdash;</span>';
-      var when = s.lastFetchAt ? new Date(s.lastFetchAt).toLocaleString() : 'Never fetched';
-      var count = s.lastFetchStatus === 'ok' ? ' &mdash; ' + s.lastFetchCount + ' items' : '';
-      var errLine = s.lastFetchStatus === 'error' && s.lastError
-        ? '<div style="color:#f87171;font-size:.76rem;margin-top:.3rem">'+esc(s.lastError)+'</div>' : '';
       html += '<div class="src-card">';
       html += '<div class="src-info">';
-      html += '<div class="src-title">'+esc(s.userId)+' &mdash; '+esc(s.lists.join(', '))+'</div>';
-      html += '<div class="src-meta">'+icon+' '+esc(when)+count+'</div>';
-      html += errLine;
-      html += '</div>';
-      html += '<button class="refresh-btn" id="refresh-btn-'+esc(s.userId)+'" data-user-id="'+esc(s.userId)+'" onclick="refreshImdbSource(this.dataset.userId)">Refresh</button>';
+      if (s.type === 'imdb_auto') {
+        var icon = s.lastFetchStatus === 'ok'    ? '<span class="src-ok">&#10003;</span>'
+                 : s.lastFetchStatus === 'error' ? '<span class="src-err">&#10007;</span>'
+                 :                                 '<span class="src-never">&mdash;</span>';
+        var when = s.lastFetchAt ? new Date(s.lastFetchAt).toLocaleString() : 'Never fetched';
+        var count = s.lastFetchStatus === 'ok' ? ' &mdash; ' + s.lastFetchCount + ' items' : '';
+        var errLine = s.lastFetchStatus === 'error' && s.lastError
+          ? '<div style="color:#f87171;font-size:.76rem;margin-top:.3rem">'+esc(s.lastError)+'</div>' : '';
+        html += '<div class="src-title">IMDb auto &mdash; '+esc(s.userId)+'</div>';
+        html += '<div class="src-meta">'+esc(s.lists.join(', '))+'</div>';
+        html += '<div class="src-meta">'+icon+' '+esc(when)+count+'</div>';
+        html += errLine;
+        html += '</div>';
+        html += '<button class="refresh-btn" id="refresh-btn-'+esc(s.userId)+'" data-user-id="'+esc(s.userId)+'" onclick="refreshImdbSource(this.dataset.userId)">Refresh</button>';
+      } else if (s.type === 'trakt') {
+        html += '<div class="src-title">Trakt</div>';
+        html += '<div class="src-meta">'+esc(s.username)+'</div>';
+        html += '</div>';
+      } else if (s.type === 'imdb_csv') {
+        html += '<div class="src-title">IMDb CSV</div>';
+        html += '<div class="src-meta">'+esc(s.path)+(s.minRating ? ' &mdash; min rating: '+s.minRating : '')+'</div>';
+        html += '</div>';
+      } else if (s.type === 'imdb_public_lists') {
+        html += '<div class="src-title">IMDb public lists</div>';
+        html += '<div class="src-meta">'+s.lists.map(function(l){ return '<a href="'+esc(l)+'" target="_blank" rel="noopener">'+esc(l)+'</a>'; }).join('<br>')+'</div>';
+        html += '</div>';
+      } else if (s.type === 'tmdb_lists') {
+        html += '<div class="src-title">TMDB lists</div>';
+        html += '<div class="src-meta">'+esc(s.lists.join(', '))+(s.pages > 1 ? ' &mdash; '+s.pages+' pages' : '')+'</div>';
+        html += '</div>';
+      } else {
+        html += '<div class="src-title">'+esc(s.type)+'</div></div>';
+      }
       html += '</div>';
     });
     el.innerHTML = html;
