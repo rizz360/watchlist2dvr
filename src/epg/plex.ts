@@ -106,6 +106,10 @@ export class PlexEpgProvider implements EpgProvider {
     return items.flatMap((item): EpgEvent[] => {
       const channel = item.Media?.[0]
       if (!channel?.beginsAt) return []
+      // Skip entries shorter than 60 minutes — these are TV episodes misclassified
+      // as movies by the XMLTV guide (e.g. SpongeBob series episodes show as type=movie)
+      const durationMinutes = channel.endsAt ? (channel.endsAt - channel.beginsAt) / 60 : 0
+      if (durationMinutes > 0 && durationMinutes < 60) return []
       return [
         {
           eventId: item.ratingKey,
