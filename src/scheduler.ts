@@ -243,6 +243,26 @@ async function run(deps: RunDeps): Promise<void> {
     }
   }
 
+  // 4b. Pre-warm TMDB ratings for all watchlist items (batched parallel, 10 at a time)
+  const allItemsForRating = [...allItems.values()]
+  let ratingDone = 0
+  for (let i = 0; i < allItemsForRating.length; i += TMDB_CONCURRENCY) {
+    const batch = allItemsForRating.slice(i, i + TMDB_CONCURRENCY)
+    await Promise.all(
+      batch.map(async (item) => {
+        try {
+          await tmdb.resolveRating(item.imdbId)
+        } catch {
+          // best-effort — don't surface rating failures as run errors
+        }
+        ratingDone++
+      }),
+    )
+  }
+  if (ratingDone > 0) {
+    console.log(`  [tmdb] ${ratingDone} rating(s) pre-warmed`)
+  }
+
   // 5. Query EPG
   const titlesToQuery = new Set<string>()
   const langs = [config.matching.preferred_language, ...config.matching.fallback_languages]
@@ -486,7 +506,7 @@ async function main(): Promise<void> {
 
   if (config.web.enabled) {
     startWebServer(
-      { dvr: deps.dvr, history: deps.history, redis, imdbAutoSources: deps.imdbAutoSources, tmdb: deps.tmdb },
+      { dvr: deps.dvr, history: deps.history, redis, imdbAutoSources: deps.imdbAutoSources },
       config.web.port,
     )
   }

@@ -3,14 +3,12 @@ import type { Redis } from "ioredis"
 import type { DvrAdapter } from "../dvr/index.js"
 import type { HistoryStore } from "../state/history.js"
 import type { ImdbAutoSource } from "../sources/imdb-auto.js"
-import type { TmdbResolver } from "../resolvers/tmdb.js"
 
 export interface WebDeps {
   dvr: DvrAdapter
   history: HistoryStore
   redis: Redis
   imdbAutoSources?: ImdbAutoSource[]
-  tmdb?: TmdbResolver
 }
 
 export function startWebServer(deps: WebDeps, port: number): void {
@@ -125,8 +123,8 @@ export function startWebServer(deps: WebDeps, port: number): void {
         ]
         const items = await Promise.all(
           rawItems.map(async (item) => {
-            if (!deps.tmdb) return item
-            const tmdbRating = await deps.tmdb.resolveRating(item.imdbId).catch(() => null)
+            const cached = await deps.redis.get(`tmdb:rating:${item.imdbId}`)
+            const tmdbRating = cached && cached !== "NOT_FOUND" ? parseFloat(cached) : null
             return { ...item, tmdbRating }
           }),
         )
@@ -424,7 +422,10 @@ function itemRow(item) {
   var extLink = id.startsWith('tmdb:')
     ? ' <a href="https://www.themoviedb.org/movie/'+esc(id.slice(5))+'" target="_blank" rel="noopener">&#x2197;</a>'
     : ' <a href="https://www.imdb.com/title/'+esc(id)+'/" target="_blank" rel="noopener">&#x2197;</a>';
-  var ratingHtml = item.userRating ? '<span class="badge badge-rating">&#9733; '+item.userRating+'</span>' : '&mdash;';
+  var ratingHtml = '';
+  if (item.userRating) ratingHtml += '<span class="badge badge-rating">&#9733; '+item.userRating+'</span>';
+  if (item.tmdbRating != null) ratingHtml += (ratingHtml ? '<br>' : '')+'<span style="color:#6b6b8a;font-size:.76rem">TMDB '+item.tmdbRating.toFixed(1)+'</span>';
+  if (!ratingHtml) ratingHtml = '&mdash;';
   var badge='', epg='&mdash;', airtime='&mdash;';
   var rowClass = item.status === 'in_library' ? ' class="tr-library"' : '';
   if (item.status==='matched') {
