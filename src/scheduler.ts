@@ -229,6 +229,7 @@ async function run(deps: RunDeps): Promise<void> {
         try {
           const result = await tmdb.resolveLocalizedTitles(item.imdbId)
           if (result["_fromCache"] === "1") tmdbCacheHits++
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const { _fromCache: _, ...titles } = result as Record<string, string>
           item.localizedTitles = titles
         } catch (err) {
