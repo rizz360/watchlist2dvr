@@ -486,7 +486,7 @@ async function main(): Promise<void> {
 
   if (config.web.enabled) {
     startWebServer(
-      { dvr: deps.dvr, history: deps.history, redis, imdbAutoSources: deps.imdbAutoSources },
+      { dvr: deps.dvr, history: deps.history, redis, imdbAutoSources: deps.imdbAutoSources, tmdb: deps.tmdb },
       config.web.port,
     )
   }

@@ -10,6 +10,10 @@ interface TmdbFindResult {
   movie_results: Array<{ id: number }>
 }
 
+interface TmdbMovieDetails {
+  vote_average: number
+}
+
 interface TmdbTranslation {
   iso_639_1: string
   data: { title: string }
@@ -57,6 +61,39 @@ export class TmdbResolver {
 
     await this.redis.set(cacheKey, JSON.stringify(titles), "EX", CACHE_TTL_SECONDS)
     return titles
+  }
+
+  async resolveRating(imdbId: string): Promise<number | null> {
+    const cacheKey = `tmdb:rating:${imdbId}`
+    const cached = await this.redis.get(cacheKey)
+    if (cached) return cached === "NOT_FOUND" ? null : parseFloat(cached)
+
+    let tmdbId: number | null
+    if (imdbId.startsWith("tmdb:")) {
+      tmdbId = parseInt(imdbId.slice(5), 10)
+    } else {
+      tmdbId = await this.findTmdbId(imdbId)
+    }
+
+    if (!tmdbId) {
+      await this.redis.set(cacheKey, "NOT_FOUND", "EX", CACHE_TTL_SECONDS)
+      return null
+    }
+
+    const response = await axios.get<TmdbMovieDetails>(`${TMDB_BASE}/movie/${tmdbId}`, {
+      params: { api_key: this.apiKey },
+      httpsAgent: ipv4Agent,
+      timeout: 10_000,
+    })
+
+    const rating = response.data.vote_average ?? null
+    await this.redis.set(
+      cacheKey,
+      rating !== null ? String(rating) : "NOT_FOUND",
+      "EX",
+      CACHE_TTL_SECONDS,
+    )
+    return rating
   }
 
   private async findTmdbId(imdbId: string): Promise<number | null> {

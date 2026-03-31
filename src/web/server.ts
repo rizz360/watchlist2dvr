@@ -3,12 +3,14 @@ import type { Redis } from "ioredis"
 import type { DvrAdapter } from "../dvr/index.js"
 import type { HistoryStore } from "../state/history.js"
 import type { ImdbAutoSource } from "../sources/imdb-auto.js"
+import type { TmdbResolver } from "../resolvers/tmdb.js"
 
 export interface WebDeps {
   dvr: DvrAdapter
   history: HistoryStore
   redis: Redis
   imdbAutoSources?: ImdbAutoSource[]
+  tmdb?: TmdbResolver
 }
 
 export function startWebServer(deps: WebDeps, port: number): void {
@@ -82,12 +84,12 @@ export function startWebServer(deps: WebDeps, port: number): void {
   app.get("/api/watchlist", (_req, res) => {
     deps.history
       .getLastRun()
-      .then((last) => {
+      .then(async (last) => {
         if (!last) {
           res.json({ items: [] })
           return
         }
-        const items = [
+        const rawItems = [
           ...(last.inLibraryItems ?? []).map((x) => ({ ...x, status: "in_library" as const })),
           ...(last.alreadyScheduledItems ?? []).map((x) => ({ ...x, status: "already_scheduled" as const })),
           ...last.matches.map((m) => ({
@@ -121,6 +123,13 @@ export function startWebServer(deps: WebDeps, port: number): void {
             year: u.year,
           })),
         ]
+        const items = await Promise.all(
+          rawItems.map(async (item) => {
+            if (!deps.tmdb) return item
+            const tmdbRating = await deps.tmdb.resolveRating(item.imdbId).catch(() => null)
+            return { ...item, tmdbRating }
+          }),
+        )
         res.json({ items })
       })
       .catch((err: Error) => res.status(500).json({ error: err.message }))
