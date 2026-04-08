@@ -96,6 +96,67 @@ export class TmdbResolver {
     return rating
   }
 
+  /**
+   * Adds all provided IMDb/TMDB IDs to the authenticated user's TMDB watchlist.
+   * Already-present items are silently ignored (TMDB returns status_code 12).
+   * Returns counts of successfully synced and failed items.
+   */
+  async syncWatchlist(
+    imdbIds: string[],
+    sessionId: string,
+  ): Promise<{ synced: number; failed: number }> {
+    const accountId = await this.getAccountId(sessionId)
+    if (accountId === null) return { synced: 0, failed: imdbIds.length }
+
+    let synced = 0
+    let failed = 0
+    for (const imdbId of imdbIds) {
+      let tmdbId: number | null
+      if (imdbId.startsWith("tmdb:")) {
+        tmdbId = parseInt(imdbId.slice(5), 10)
+      } else {
+        try {
+          tmdbId = await this.findTmdbId(imdbId)
+        } catch {
+          failed++
+          continue
+        }
+      }
+      if (!tmdbId) {
+        failed++
+        continue
+      }
+      try {
+        await axios.post(
+          `${TMDB_BASE}/account/${accountId}/watchlist`,
+          { media_type: "movie", media_id: tmdbId, watchlist: true },
+          {
+            params: { api_key: this.apiKey, session_id: sessionId },
+            httpsAgent: ipv4Agent,
+            timeout: 10_000,
+          },
+        )
+        synced++
+      } catch {
+        failed++
+      }
+    }
+    return { synced, failed }
+  }
+
+  private async getAccountId(sessionId: string): Promise<number | null> {
+    try {
+      const response = await axios.get<{ id: number }>(`${TMDB_BASE}/account`, {
+        params: { api_key: this.apiKey, session_id: sessionId },
+        httpsAgent: ipv4Agent,
+        timeout: 10_000,
+      })
+      return response.data.id
+    } catch {
+      return null
+    }
+  }
+
   private async findTmdbId(imdbId: string): Promise<number | null> {
     const cacheKey = `tmdb:id:${imdbId}`
     const cached = await this.redis.get(cacheKey)

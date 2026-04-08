@@ -149,6 +149,19 @@ async function run(deps: RunDeps): Promise<void> {
   console.log(`  [source] Total unique items: ${allItems.size}`)
   const itemsTotal = allItems.size
 
+  // 1b. Optionally sync collected IMDb items to the user's TMDB watchlist
+  if (config.tmdb.sync_watchlist) {
+    const { session_id } = config.tmdb.sync_watchlist
+    const imdbIds = [...allItems.keys()]
+    console.log(`  [tmdb] Syncing ${imdbIds.length} item(s) to TMDB watchlist...`)
+    try {
+      const { synced, failed } = await tmdb.syncWatchlist(imdbIds, session_id)
+      console.log(`  [tmdb] Watchlist sync complete: ${synced} added, ${failed} failed/not-found`)
+    } catch (err) {
+      console.warn(`  [tmdb] Watchlist sync failed: ${(err as Error).message}`)
+    }
+  }
+
   // 2. Filter: already in library
   let remaining = [...allItems.values()]
   let itemsInLibrary = 0

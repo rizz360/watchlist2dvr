@@ -108,6 +108,14 @@ library:
 
 tmdb:
   api_key: "YOUR_TMDB_API_KEY"
+  # Optional: sync all collected watchlist items to your TMDB account watchlist each run.
+  # Requires a TMDB session_id — obtain one by:
+  #   1. Create a request token:  GET https://api.themoviedb.org/3/authentication/token/new?api_key=YOUR_KEY
+  #   2. Approve it in the browser: https://www.themoviedb.org/authenticate/{request_token}
+  #   3. Exchange for a session:  POST https://api.themoviedb.org/3/authentication/session/new?api_key=YOUR_KEY
+  #                               Body: {"request_token": "..."}  → copy the returned session_id
+  # sync_watchlist:
+  #   session_id: "YOUR_TMDB_SESSION_ID"
 
 matching:
   preferred_language: de
