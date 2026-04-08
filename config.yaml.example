@@ -135,3 +135,18 @@ scheduler:
 web:
   enabled: true
   port: 3000
+
+# ---------------------------------------------------------------------------
+# Notifications (optional)
+# ---------------------------------------------------------------------------
+# Send a push notification whenever new recordings are scheduled (or on errors).
+# Multiple services can be listed — all are notified in parallel.
+#
+# --- ntfy ---
+# A self-hosted or cloud (ntfy.sh) push notification service.
+# https://docs.ntfy.sh/publish/
+#
+# notifications:
+#   - type: ntfy
+#     url: https://ntfy.sh/your-topic   # or http://your-ntfy-server/topic
+#     token: "YOUR_NTFY_ACCESS_TOKEN"   # optional — for private/authenticated topics

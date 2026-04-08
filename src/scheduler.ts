@@ -23,6 +23,8 @@ import { MatchingEngine } from "./matching/engine.js"
 import { StateStore } from "./state/redis.js"
 import { HistoryStore, type RunRecord } from "./state/history.js"
 import { startWebServer } from "./web/server.js"
+import { NoopNotifier, type Notifier } from "./notifications/index.js"
+import { NtfyNotifier } from "./notifications/ntfy.js"
 
 interface RunDeps {
   config: Config
@@ -36,6 +38,7 @@ interface RunDeps {
   epg: EpgProvider
   dvr: DvrAdapter
   engine: MatchingEngine
+  notifiers: Notifier[]
 }
 
 /** Derive a stable, human-readable cache key for a source from its config. */
@@ -94,11 +97,18 @@ function buildDeps(config: Config, redis: Redis): RunDeps {
       fuzzyEnabled: config.matching.fuzzy_enabled,
       fuzzyThreshold: config.matching.fuzzy_threshold,
     }),
+    notifiers:
+      config.notifications.length > 0
+        ? config.notifications.map((n) => {
+            if (n.type === "ntfy") return new NtfyNotifier(n.url, n.token)
+            return new NoopNotifier()
+          })
+        : [new NoopNotifier()],
   }
 }
 
 async function run(deps: RunDeps): Promise<void> {
-  const { config, state, history, tmdb, sources, sourceIds, checkers, epg, dvr, engine } = deps
+  const { config, state, history, tmdb, sources, sourceIds, checkers, epg, dvr, engine, notifiers } = deps
   const startedAt = new Date().toISOString()
   const errors: string[] = []
 
@@ -316,6 +326,7 @@ async function run(deps: RunDeps): Promise<void> {
 
   // 7. Schedule new recordings
   const dryRun = config.scheduler.dry_run
+  const newlyScheduledTitles: string[] = []
   let dvrEntries: Awaited<ReturnType<typeof dvr.getScheduledEntries>> = []
   if (!dryRun) {
     try {
@@ -353,6 +364,7 @@ async function run(deps: RunDeps): Promise<void> {
       await dvr.scheduleEvent(m.event.eventId)
       await state.markScheduled(m.item.imdbId)
       console.log(`  [dvr] Scheduled: "${m.item.originalTitle}"`)
+      newlyScheduledTitles.push(m.item.originalTitle)
       scheduled++
     } catch (err) {
       const axiosBody =
@@ -416,6 +428,19 @@ async function run(deps: RunDeps): Promise<void> {
     alreadyScheduledItems,
   }
   await history.saveRun(record)
+
+  // 9. Send notifications
+  if (notifiers.length > 0) {
+    const newTitles = dryRun
+      ? matches.map((m) => m.item.originalTitle)
+      : newlyScheduledTitles
+    const event = { scheduled: dryRun ? matches.length : scheduled, titles: newTitles, errors, dryRun }
+    await Promise.all(
+      notifiers.map((n) =>
+        n.notify(event).catch((err) => console.error(`  [notify] Failed to send notification: ${(err as Error).message}`)),
+      ),
+    )
+  }
 }
 
 async function checkConnectivity(config: Config): Promise<void> {

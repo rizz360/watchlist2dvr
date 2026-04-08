@@ -116,6 +116,24 @@ const PlexDvrSchema = z.object({
 
 const DvrSchema = z.discriminatedUnion("type", [TvheadendDvrSchema, PlexDvrSchema])
 
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+const NtfyNotificationSchema = z.object({
+  type: z.literal("ntfy"),
+  /** Full topic URL, e.g. https://ntfy.sh/your-topic or http://ntfy.example.com/my-topic */
+  url: z.string().url(),
+  /** Optional Bearer token for authenticated/private topics. */
+  token: z.string().optional(),
+})
+
+const NotificationSchema = z.discriminatedUnion("type", [NtfyNotificationSchema])
+
+export type NotificationConfig = z.infer<typeof NotificationSchema>
+
+// ---------------------------------------------------------------------------
+
 const ConfigSchema = z.object({
   sources: z.array(SourceSchema).min(1),
 
@@ -123,6 +141,15 @@ const ConfigSchema = z.object({
 
   tmdb: z.object({
     api_key: z.string().min(1),
+    /**
+     * If set, all collected watchlist items will be added to your TMDB watchlist each run.
+     * Obtain a session_id by authenticating via the TMDB API (see config.yaml.example).
+     */
+    sync_watchlist: z
+      .object({
+        session_id: z.string().min(1),
+      })
+      .optional(),
   }),
 
   matching: z
@@ -158,6 +185,8 @@ const ConfigSchema = z.object({
       port: z.number().int().default(3000),
     })
     .default({}),
+
+  notifications: z.array(NotificationSchema).optional().default([]),
 })
 
 export type Config = z.infer<typeof ConfigSchema>
