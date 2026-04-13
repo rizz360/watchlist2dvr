@@ -631,12 +631,16 @@ function loadHistory() {
       }
       if (run.matches && run.matches.length) {
         html += '<details style="margin-top:.7rem"><summary style="cursor:pointer;font-size:.78rem;color:#8888aa;user-select:none">'+run.matches.length+' matched movie'+(run.matches.length!==1?'s':'')+'</summary>';
-        html += '<table style="margin-top:.5rem"><thead><tr><th>Title</th><th>EPG / Channel</th><th>Airtime</th><th>Match</th></tr></thead><tbody>';
+        html += '<table style="margin-top:.5rem"><thead><tr><th>Title</th><th>List</th><th>EPG / Channel</th><th>Airtime</th><th>Match</th></tr></thead><tbody>';
         run.matches.forEach(function(m) {
           var displayTitle = (m.localizedTitle && m.localizedTitle !== m.originalTitle)
             ? esc(m.localizedTitle)+'<br><small style="color:#6b6b8a">'+esc(m.originalTitle)+'</small>'
             : esc(m.originalTitle);
+          var listCell = m.listLabel
+            ? '<span class="badge-list-pill">'+esc(m.listLabel)+'</span>'
+            : '<span style="color:#6b6b8a">'+esc(m.source)+'</span>';
           html += '<tr><td>'+displayTitle+'</td>';
+          html += '<td>'+listCell+'</td>';
           html += '<td>'+esc(m.epgTitle)+'<br><small style="color:#6b6b8a">'+esc(m.channelName)+'</small></td>';
           html += '<td>'+fmtDate(m.startTime)+'</td>';
           html += '<td><span class="badge badge-'+esc(m.confidence)+'">'+esc(m.confidence)+'</span>'+(m.matchedLanguage ? ' <small style="color:#6b6b8a">'+esc(m.matchedLanguage)+'</small>' : '')+'</td></tr>';
