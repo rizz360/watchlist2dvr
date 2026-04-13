@@ -135,25 +135,40 @@ export function startWebServer(deps: WebDeps, port: number): void {
       .catch((err: Error) => res.status(500).json({ error: err.message }))
   })
 
+  const DEBUG_CACHES: Array<{ name: string; label: string; type: "prefix" | "blob"; key: string }> = [
+    { name: "tmdb-ids",          label: "tmdb:id:",             type: "prefix", key: "tmdb:id:*" },
+    { name: "tmdb-titles",       label: "tmdb:titles:",         type: "prefix", key: "tmdb:titles:*" },
+    { name: "plex-library",      label: "plex:library:",        type: "blob",   key: "plex:library:all:v2" },
+    { name: "jellyfin-library",  label: "jellyfin:library:",    type: "blob",   key: "jellyfin:library:all:v2" },
+    { name: "scheduled",         label: "state:scheduled:",     type: "prefix", key: "state:scheduled:*" },
+  ]
+
   app.get("/api/debug/cache", (_req, res) => {
-    const keyPrefixes = ["tmdb:id:", "tmdb:titles:"]
-    const blobKeys: Array<{ label: string; key: string }> = [
-      { label: "plex:library:", key: "plex:library:all:v2" },
-      { label: "jellyfin:library:", key: "jellyfin:library:all:v2" },
-    ]
-    Promise.all([
-      ...keyPrefixes.map((p) => deps.redis.keys(`${p}*`)),
-      ...blobKeys.map((b) => deps.redis.get(b.key)),
-    ])
-      .then((results) => {
-        const counts: Record<string, number> = {}
-        keyPrefixes.forEach((p, i) => (counts[p] = (results[i] as string[]).length))
-        blobKeys.forEach((b, i) => {
-          const raw = results[keyPrefixes.length + i] as string | null
-          counts[b.label] = raw ? (JSON.parse(raw) as string[]).length : 0
-        })
-        res.json({ counts })
+    Promise.all(
+      DEBUG_CACHES.map((c) =>
+        c.type === "blob"
+          ? deps.redis.get(c.key).then((raw) => (raw ? (JSON.parse(raw) as string[]).length : 0))
+          : deps.redis.keys(c.key).then((keys) => keys.length),
+      ),
+    )
+      .then((counts) => {
+        const caches = DEBUG_CACHES.map((c, i) => ({ name: c.name, label: c.label, count: counts[i] }))
+        res.json({ caches })
       })
+      .catch((err: Error) => res.status(500).json({ error: err.message }))
+  })
+
+  app.post("/api/debug/cache/:name/clear", (req, res) => {
+    const entry = DEBUG_CACHES.find((c) => c.name === req.params.name)
+    if (!entry) {
+      res.status(404).json({ error: "Unknown cache name" })
+      return
+    }
+    const del = entry.type === "blob"
+      ? deps.redis.del(entry.key).then(() => undefined)
+      : deps.redis.keys(entry.key).then((keys) => keys.length > 0 ? deps.redis.del(...keys).then(() => undefined) : undefined)
+    del
+      .then(() => res.json({ ok: true }))
       .catch((err: Error) => res.status(500).json({ error: err.message }))
   })
 
@@ -658,15 +673,28 @@ function loadHistory() {
 function loadDebug() {
   fetch('/api/debug/cache').then(function(r){return r.json()}).then(function(data) {
     var html = '<p class="sec">Redis cache</p>';
-    html += '<table><thead><tr><th>Cache</th><th>Entries</th></tr></thead><tbody>';
-    Object.keys(data.counts).forEach(function(k) {
-      html += '<tr><td><code>'+esc(k)+'</code></td><td>'+data.counts[k]+'</td></tr>';
+    html += '<table><thead><tr><th>Cache</th><th>Entries</th><th></th></tr></thead><tbody>';
+    (data.caches || []).forEach(function(c) {
+      html += '<tr><td><code>'+esc(c.label)+'</code></td><td>'+c.count+'</td>';
+      html += '<td><button class="refresh-btn" style="padding:.25rem .7rem;font-size:.75rem" onclick="clearCache(&quot;'+esc(c.name)+'&quot;,this)">Clear</button></td></tr>';
     });
     html += '</tbody></table>';
     document.getElementById('debug-content').innerHTML = html;
   }).catch(function(e) {
     document.getElementById('debug-content').innerHTML = '<p class="err-box">'+esc(String(e))+'</p>';
   });
+}
+
+function clearCache(name, btn) {
+  btn.disabled = true;
+  btn.textContent = '\u2026';
+  fetch('/api/debug/cache/'+encodeURIComponent(name)+'/clear', {method:'POST'})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if (d.error) { btn.disabled = false; btn.textContent = 'Clear'; alert('Clear failed: ' + d.error); return; }
+      loadDebug();
+    })
+    .catch(function(e){ btn.disabled = false; btn.textContent = 'Clear'; alert('Clear failed: ' + String(e)); });
 }
 
 function loadScheduledState() {
