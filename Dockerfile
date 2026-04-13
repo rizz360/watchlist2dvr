@@ -22,6 +22,9 @@ RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 
+ARG BUILD_DATE
+ENV BUILD_DATE=${BUILD_DATE}
+
 VOLUME ["/data"]
 
 EXPOSE 3000

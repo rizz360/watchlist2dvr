@@ -15,6 +15,7 @@ export interface WebDeps {
 
 export function startWebServer(deps: WebDeps, port: number): void {
   const app = express()
+  const buildDate = process.env.BUILD_DATE || null
 
   app.get("/api/status", (_req, res) => {
     deps.history
@@ -22,6 +23,7 @@ export function startWebServer(deps: WebDeps, port: number): void {
       .then((last) => {
         res.json({
           service: "watchlist2dvr",
+          buildDate,
           lastRun: last
             ? { at: last.completedAt, scheduled: last.scheduled, matched: last.matchesFound }
             : null,
@@ -436,10 +438,11 @@ function fmtDate(iso) {
 function loadStatus() {
   fetch('/api/status').then(function(r){return r.json()}).then(function(d) {
     var el = document.getElementById('last-run-info');
+    var buildPart = d.buildDate ? ' &nbsp;&bull;&nbsp; built ' + new Date(d.buildDate).toLocaleDateString() : '';
     if (d.lastRun) {
-      el.textContent = 'Last run: ' + new Date(d.lastRun.at).toLocaleString() + ' \u2014 ' + d.lastRun.scheduled + ' scheduled';
+      el.innerHTML = 'Last run: ' + new Date(d.lastRun.at).toLocaleString() + ' \u2014 ' + d.lastRun.scheduled + ' scheduled' + buildPart;
     } else {
-      el.textContent = 'No runs recorded yet';
+      el.innerHTML = 'No runs recorded yet' + buildPart;
     }
   }).catch(function(){});
 }

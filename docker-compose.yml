@@ -3,6 +3,8 @@ services:
     build:
       context: .
       pull: false  # don't re-pull base image if already cached locally
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
     pull_policy: if_not_present
     restart: unless-stopped
     dns:
