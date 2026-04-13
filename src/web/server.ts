@@ -136,12 +136,53 @@ export function startWebServer(deps: WebDeps, port: number): void {
   })
 
   app.get("/api/debug/cache", (_req, res) => {
-    const prefixes = ["tmdb:id:", "tmdb:titles:", "plex:library:", "jellyfin:library:"]
-    Promise.all(prefixes.map((p) => deps.redis.keys(`${p}*`)))
+    const keyPrefixes = ["tmdb:id:", "tmdb:titles:"]
+    const blobKeys: Array<{ label: string; key: string }> = [
+      { label: "plex:library:", key: "plex:library:all:v2" },
+      { label: "jellyfin:library:", key: "jellyfin:library:all:v2" },
+    ]
+    Promise.all([
+      ...keyPrefixes.map((p) => deps.redis.keys(`${p}*`)),
+      ...blobKeys.map((b) => deps.redis.get(b.key)),
+    ])
       .then((results) => {
         const counts: Record<string, number> = {}
-        prefixes.forEach((p, i) => (counts[p] = results[i].length))
+        keyPrefixes.forEach((p, i) => (counts[p] = (results[i] as string[]).length))
+        blobKeys.forEach((b, i) => {
+          const raw = results[keyPrefixes.length + i] as string | null
+          counts[b.label] = raw ? (JSON.parse(raw) as string[]).length : 0
+        })
         res.json({ counts })
+      })
+      .catch((err: Error) => res.status(500).json({ error: err.message }))
+  })
+
+  app.get("/api/debug/scheduled", (_req, res) => {
+    deps.redis
+      .keys("state:scheduled:*")
+      .then(async (keys) => {
+        if (keys.length === 0) {
+          res.json({ entries: [] })
+          return
+        }
+        const imdbIds = keys.map((k) => k.replace("state:scheduled:", ""))
+        const ttls = await Promise.all(keys.map((k) => deps.redis.ttl(k)))
+
+        // Build title map from last run history
+        const last = await deps.history.getLastRun()
+        const titleMap = new Map<string, string>()
+        if (last) {
+          for (const m of last.matches) titleMap.set(m.imdbId, m.originalTitle)
+          for (const a of last.ambiguousItems) titleMap.set(a.imdbId, a.originalTitle)
+          for (const u of last.unmatchedItems) titleMap.set(u.imdbId, u.originalTitle)
+          for (const x of last.inLibraryItems ?? []) titleMap.set(x.imdbId, x.originalTitle)
+          for (const x of last.alreadyScheduledItems ?? []) titleMap.set(x.imdbId, x.originalTitle)
+        }
+
+        const entries = imdbIds
+          .map((id, i) => ({ imdbId: id, title: titleMap.get(id) ?? null, ttlSeconds: ttls[i] }))
+          .sort((a, b) => (a.title ?? a.imdbId).localeCompare(b.title ?? b.imdbId))
+        res.json({ entries })
       })
       .catch((err: Error) => res.status(500).json({ error: err.message }))
   })
@@ -324,6 +365,11 @@ a:hover{text-decoration:underline}
   </div>
   <div id="tab-debug" class="tab">
     <div id="debug-content"><p class="empty">Loading&hellip;</p></div>
+    <div style="margin-top:1.5rem">
+      <p class="sec">Scheduled state</p>
+      <p style="font-size:.78rem;color:#6b6b8a;margin-bottom:.7rem">Movies held in state from previous runs (skipped for 30 days after scheduling)</p>
+      <div id="debug-scheduled"><p class="empty">Loading&hellip;</p></div>
+    </div>
     <div style="margin-top:1.5rem">
       <p class="sec">Look up IMDb ID</p>
       <div style="display:flex;gap:.6rem;margin-top:.5rem">
@@ -608,14 +654,34 @@ function loadHistory() {
 function loadDebug() {
   fetch('/api/debug/cache').then(function(r){return r.json()}).then(function(data) {
     var html = '<p class="sec">Redis cache</p>';
-    html += '<table><thead><tr><th>Key prefix</th><th>Entries</th></tr></thead><tbody>';
+    html += '<table><thead><tr><th>Cache</th><th>Entries</th></tr></thead><tbody>';
     Object.keys(data.counts).forEach(function(k) {
-      html += '<tr><td><code>'+esc(k)+'*</code></td><td>'+data.counts[k]+'</td></tr>';
+      html += '<tr><td><code>'+esc(k)+'</code></td><td>'+data.counts[k]+'</td></tr>';
     });
     html += '</tbody></table>';
     document.getElementById('debug-content').innerHTML = html;
   }).catch(function(e) {
     document.getElementById('debug-content').innerHTML = '<p class="err-box">'+esc(String(e))+'</p>';
+  });
+}
+
+function loadScheduledState() {
+  fetch('/api/debug/scheduled').then(function(r){return r.json()}).then(function(data) {
+    var el = document.getElementById('debug-scheduled');
+    var entries = data.entries || [];
+    if (!entries.length) { el.innerHTML = '<p class="empty">No scheduled state entries.</p>'; return; }
+    var html = '<table><thead><tr><th>Title</th><th>IMDb ID</th><th>Expires in</th></tr></thead><tbody>';
+    entries.forEach(function(e) {
+      var days = e.ttlSeconds > 0 ? Math.ceil(e.ttlSeconds / 86400) + 'd' : '&mdash;';
+      var titleCell = e.title
+        ? esc(e.title)+' <a href="https://www.imdb.com/title/'+esc(e.imdbId)+'/" target="_blank" rel="noopener">&#x2197;</a>'
+        : '<span style="color:#6b6b8a">'+esc(e.imdbId)+'</span>';
+      html += '<tr><td>'+titleCell+'</td><td><code style="color:#6b6b8a">'+esc(e.imdbId)+'</code></td><td>'+days+'</td></tr>';
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  }).catch(function(e) {
+    document.getElementById('debug-scheduled').innerHTML = '<p class="err-box">'+esc(String(e))+'</p>';
   });
 }
 
@@ -712,8 +778,8 @@ function refreshImdbSource(userId) {
     });
 }
 
-loadStatus(); loadWatchlist(); loadUpcoming(); loadHistory(); loadDebug(); loadSources();
-setInterval(function(){ loadStatus(); loadWatchlist(); loadUpcoming(); loadHistory(); loadDebug(); loadSources(); }, 5*60*1000);
+loadStatus(); loadWatchlist(); loadUpcoming(); loadHistory(); loadDebug(); loadScheduledState(); loadSources();
+setInterval(function(){ loadStatus(); loadWatchlist(); loadUpcoming(); loadHistory(); loadDebug(); loadScheduledState(); loadSources(); }, 5*60*1000);
 </script>
 </body>
 </html>`
