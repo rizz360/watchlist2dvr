@@ -1,4 +1,5 @@
 import express from "express"
+import { readFileSync } from "node:fs"
 import type { Redis } from "ioredis"
 import type { DvrAdapter } from "../dvr/index.js"
 import type { HistoryStore } from "../state/history.js"
@@ -15,7 +16,14 @@ export interface WebDeps {
 
 export function startWebServer(deps: WebDeps, port: number): void {
   const app = express()
-  const buildDate = process.env.BUILD_DATE || null
+  let buildDate = process.env.BUILD_DATE || null
+  if (!buildDate) {
+    try {
+      buildDate = readFileSync("/app/BUILD_DATE", "utf-8").trim() || null
+    } catch {
+      buildDate = null
+    }
+  }
 
   app.get("/api/status", (_req, res) => {
     deps.history

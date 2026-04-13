@@ -22,8 +22,7 @@ RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 
-ARG BUILD_DATE
-ENV BUILD_DATE=${BUILD_DATE}
+RUN date -u +%Y-%m-%dT%H:%M:%SZ > /app/BUILD_DATE
 
 VOLUME ["/data"]
 
