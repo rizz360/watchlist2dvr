@@ -294,7 +294,6 @@ a:hover{text-decoration:underline}
 </header>
 <nav>
   <button class="active" onclick="showTab('watchlist',this)">Watchlist</button>
-  <button onclick="showTab('lists',this)">By List</button>
   <button onclick="showTab('upcoming',this)">Upcoming</button>
   <button onclick="showTab('history',this)">History</button>
   <button onclick="showTab('debug',this)">Debug</button>
@@ -306,6 +305,7 @@ a:hover{text-decoration:underline}
       <input type="text" id="wl-search" placeholder="Search titles…" oninput="filterWatchlist()">
       <button class="fbtn active" id="fbtn-all" onclick="setFilter('all',this)">All</button>
       <button class="fbtn" id="fbtn-matched" onclick="setFilter('matched',this)">Matched</button>
+      <button class="fbtn" id="fbtn-already_scheduled" onclick="setFilter('already_scheduled',this)">Scheduled</button>
       <button class="fbtn" id="fbtn-in_library" onclick="setFilter('in_library',this)">In Library</button>
       <button class="fbtn" id="fbtn-ambiguous" onclick="setFilter('ambiguous',this)">Ambiguous</button>
       <button class="fbtn" id="fbtn-unmatched" onclick="setFilter('unmatched',this)">No EPG</button>
@@ -315,9 +315,6 @@ a:hover{text-decoration:underline}
       <button class="fbtn active" id="lfbtn-all" onclick="setListFilter(null,this)">All lists</button>
     </div>
     <div id="wl-content"><p class="empty">Loading&hellip;</p></div>
-  </div>
-  <div id="tab-lists" class="tab">
-    <div id="lists-content"><p class="empty">Loading&hellip;</p></div>
   </div>
   <div id="tab-upcoming" class="tab">
     <div id="up-content"><p class="empty">Loading&hellip;</p></div>
@@ -546,7 +543,6 @@ function loadWatchlist() {
     wlAllItems = items;
     buildListFilterBar(items);
     renderWatchlist();
-    renderLists();
   }).catch(function(e) {
     document.getElementById('wl-content').innerHTML = '<p class="err-box">'+esc(String(e))+'</p>';
   });
@@ -586,6 +582,20 @@ function loadHistory() {
       html += '</div>';
       if (run.errors && run.errors.length) {
         html += '<div class="run-errors">'+run.errors.map(esc).join('<br>')+'</div>';
+      }
+      if (run.matches && run.matches.length) {
+        html += '<details style="margin-top:.7rem"><summary style="cursor:pointer;font-size:.78rem;color:#8888aa;user-select:none">'+run.matches.length+' matched movie'+(run.matches.length!==1?'s':'')+'</summary>';
+        html += '<table style="margin-top:.5rem"><thead><tr><th>Title</th><th>EPG / Channel</th><th>Airtime</th><th>Match</th></tr></thead><tbody>';
+        run.matches.forEach(function(m) {
+          var displayTitle = (m.localizedTitle && m.localizedTitle !== m.originalTitle)
+            ? esc(m.localizedTitle)+'<br><small style="color:#6b6b8a">'+esc(m.originalTitle)+'</small>'
+            : esc(m.originalTitle);
+          html += '<tr><td>'+displayTitle+'</td>';
+          html += '<td>'+esc(m.epgTitle)+'<br><small style="color:#6b6b8a">'+esc(m.channelName)+'</small></td>';
+          html += '<td>'+fmtDate(m.startTime)+'</td>';
+          html += '<td><span class="badge badge-'+esc(m.confidence)+'">'+esc(m.confidence)+'</span>'+(m.matchedLanguage ? ' <small style="color:#6b6b8a">'+esc(m.matchedLanguage)+'</small>' : '')+'</td></tr>';
+        });
+        html += '</tbody></table></details>';
       }
       html += '</div>';
     });
