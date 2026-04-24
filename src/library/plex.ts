@@ -32,6 +32,7 @@ const PAGE_SIZE = 500
 
 export class PlexLibraryChecker implements LibraryChecker {
   private idsPromise: Promise<Set<string>> | null = null
+  private idsFetchedAt: number | null = null
 
   constructor(
     private readonly baseUrl: string,
@@ -40,7 +41,23 @@ export class PlexLibraryChecker implements LibraryChecker {
   ) {}
 
   private getIds(): Promise<Set<string>> {
-    if (!this.idsPromise) this.idsPromise = this.fetchIds()
+    // Expire in-memory cache after TTL so library additions are picked up
+    // and so a previously-failed fetch is retried
+    if (this.idsPromise && this.idsFetchedAt && Date.now() - this.idsFetchedAt > CACHE_TTL_SECONDS * 1000) {
+      this.idsPromise = null
+      this.idsFetchedAt = null
+    }
+    if (!this.idsPromise) {
+      this.idsPromise = this.fetchIds().then(
+        (ids) => { this.idsFetchedAt = Date.now(); return ids },
+        (err) => {
+          // Reset so the next run retries instead of reusing the rejected promise
+          this.idsPromise = null
+          this.idsFetchedAt = null
+          throw err
+        },
+      )
+    }
     return this.idsPromise
   }
 
