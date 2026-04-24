@@ -1,9 +1,7 @@
 services:
   watchlist2dvr:
-    build:
-      context: .
-      pull: false  # don't re-pull base image if already cached locally
-    pull_policy: if_not_present
+    image: rizz360/watchlist2dvr:latest
+    pull_policy: always
     restart: unless-stopped
     dns:
       - 100.100.100.100  # Tailscale MagicDNS — resolves .ts.net hostnames and peer names
