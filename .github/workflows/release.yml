@@ -37,4 +37,4 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/watchlist2dvr:${{ steps.version.outputs.version }}
             ${{ secrets.DOCKERHUB_USERNAME }}/watchlist2dvr:latest
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,ignore-error=true
