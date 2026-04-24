@@ -32,7 +32,7 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            rizz360/watchlist2dvr:latest
-            rizz360/watchlist2dvr:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/watchlist2dvr:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/watchlist2dvr:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

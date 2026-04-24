@@ -1,6 +1,6 @@
 services:
   watchlist2dvr:
-    image: rizz360/watchlist2dvr:latest
+    image: irizzu/watchlist2dvr:latest
     pull_policy: always
     restart: unless-stopped
     dns:
