@@ -1,15 +1,14 @@
-name: Release
+name: Publish Docker image on Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [published]
 
 jobs:
-  release:
+  docker:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # required to create GitHub Releases
+      contents: read
 
     steps:
       - name: Checkout
@@ -39,9 +38,3 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/watchlist2dvr:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          name: v${{ steps.version.outputs.version }}

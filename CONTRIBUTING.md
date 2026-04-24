@@ -71,29 +71,49 @@ GitHub auto-generates release notes grouped by these prefixes.
 
 ## Releasing
 
-Releases are cut manually via git tags. The [release workflow](.github/workflows/release.yml) triggers automatically on any `v*` tag and:
+This project uses [release-please](https://github.com/googleapis/release-please-action) for fully automated releases.
 
-1. Builds a multi-arch Docker image (`linux/amd64` + `linux/arm64`)
-2. Pushes `irizzu/watchlist2dvr:<version>` and `irizzu/watchlist2dvr:latest` to Docker Hub
-3. Creates a GitHub Release with auto-generated notes from commits since the last tag
+### How it works
 
-### Cutting a release
+After each merge to `main`, release-please inspects the new conventional commits and creates (or updates) a **Release PR**. This PR:
 
-Using `npm version` (recommended — updates `package.json` and creates the tag):
+- Bumps the version in `package.json` according to SemVer rules
+- Generates / updates `CHANGELOG.md` with entries grouped by commit type
+- Stays open and accumulates further changes as more commits land on `main`
+
+When you're ready to ship, **merge the Release PR**. release-please then:
+
+1. Tags the merge commit with the version number
+2. Creates a GitHub Release with the generated changelog as release notes
+3. Triggers the Docker publish workflow, which pushes `irizzu/watchlist2dvr:<version>` and `irizzu/watchlist2dvr:latest` to Docker Hub
+
+**You never need to manually create tags or write release notes.**
+
+### SemVer rules (from conventional commits)
+
+| Commit prefix | Version bump |
+|---|---|
+| `fix:`, `deps:` | patch — `1.0.0 → 1.0.1` |
+| `feat:` | minor — `1.0.0 → 1.1.0` |
+| `feat!:`, `fix!:`, `refactor!:`, etc. | major — `1.0.0 → 2.0.0` |
+
+> `chore:`, `docs:`, `ci:`, `test:` commits do **not** trigger a release PR on their own.
+
+### Forcing a specific version
+
+Add `Release-As: x.y.z` to the **body** of any commit:
 
 ```sh
-npm version patch   # 1.0.0 → 1.0.1  (bug fixes)
-npm version minor   # 1.0.0 → 1.1.0  (new features, backwards compatible)
-npm version major   # 1.0.0 → 2.0.0  (breaking changes)
-
-git push && git push --tags
+git commit --allow-empty -m "chore: release 2.0.0" -m "Release-As: 2.0.0"
 ```
 
-Or manually:
+### Fixing release notes after merge
 
-```sh
-git tag v1.2.0 -m "Release v1.2.0"
-git push --tags
+Edit the body of the already-merged PR and add an override block — release-please will use it on the next run:
+
 ```
-
-The `docker-publish` workflow continues to push `latest` on every merge to `main` between releases.
+BEGIN_COMMIT_OVERRIDE
+feat: add ability to override merged commit message
+fix: another message
+END_COMMIT_OVERRIDE
+```
