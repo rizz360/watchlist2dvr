@@ -1,6 +1,7 @@
 # watchlist2dvr
 
 [![Build](https://github.com/rizz360/watchlist2dvr/actions/workflows/docker-publish.yml/badge.svg?branch=main)](https://github.com/rizz360/watchlist2dvr/actions/workflows/docker-publish.yml)
+[![Release](https://img.shields.io/github/v/release/rizz360/watchlist2dvr?label=release&logo=github)](https://github.com/rizz360/watchlist2dvr/releases)
 [![Docker Image](https://img.shields.io/docker/v/irizzu/watchlist2dvr?label=docker&logo=docker&logoColor=white)](https://hub.docker.com/r/irizzu/watchlist2dvr)
 [![Docker Pulls](https://img.shields.io/docker/pulls/irizzu/watchlist2dvr?logo=docker&logoColor=white)](https://hub.docker.com/r/irizzu/watchlist2dvr)
 [![Node](https://img.shields.io/badge/node-22-brightgreen?logo=node.js&logoColor=white)](https://nodejs.org)
@@ -523,39 +524,9 @@ dns:
 
 ---
 
-## Project structure
+## Contributing
 
-```
-src/
-├── sources/          # WatchlistSource interface + Trakt, IMDb CSV, IMDb auto-download, TMDB lists adapters
-├── library/          # LibraryChecker interface + Plex, Jellyfin adapters
-├── resolvers/        # TMDB localization resolver (Redis-cached)
-├── matching/
-│   ├── normalizer.ts # Deterministic title normalization pipeline
-│   └── engine.ts     # Matching logic + fuzzy fallback
-├── epg/              # EpgProvider interface + TVHeadend, Plex adapters
-├── dvr/              # DvrAdapter interface + TVHeadend, Plex adapters
-├── state/
-│   ├── redis.ts      # Idempotency state store
-│   └── history.ts    # Run history (persisted in Redis)
-├── web/
-│   └── server.ts     # Express read-only dashboard
-├── config.ts         # Config schema (zod) + loader
-└── scheduler.ts      # Main orchestration loop
-```
-
----
-
-## Development
-
-```sh
-npm install
-npm run dev          # run with tsx watch (requires local Redis)
-npm test             # vitest
-npm run typecheck    # tsc --noEmit
-```
-
-Tests cover the normalization pipeline and matching engine. All 20 tests run in under 400ms with no network calls.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for project structure, development setup, commit conventions, and how to cut a release.
 
 ---
 
