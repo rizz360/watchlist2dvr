@@ -1,5 +1,11 @@
 # watchlist2dvr
 
+[![Build](https://img.shields.io/github/actions/workflow/status/rizz360/watchlist2dvr/docker-publish.yml?branch=main&label=build&logo=github)](https://github.com/rizz360/watchlist2dvr/actions/workflows/docker-publish.yml)
+[![Docker Image](https://img.shields.io/docker/v/irizzu/watchlist2dvr?label=docker&logo=docker&logoColor=white)](https://hub.docker.com/r/irizzu/watchlist2dvr)
+[![Docker Pulls](https://img.shields.io/docker/pulls/irizzu/watchlist2dvr?logo=docker&logoColor=white)](https://hub.docker.com/r/irizzu/watchlist2dvr)
+[![Node](https://img.shields.io/badge/node-22-brightgreen?logo=node.js&logoColor=white)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/typescript-5-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+
 Automatically records movies from your IMDb watchlist on your DVR — fully hands-off.
 
 You mark a film "Watch Later" on IMDb. watchlist2dvr picks it up, resolves the correct localized title for your region, checks whether you already own it, and schedules a recording the next time it appears in the EPG.
@@ -54,7 +60,7 @@ Every layer is a swappable adapter. The matching engine never knows which source
 ### 1. Clone and prepare
 
 ```sh
-git clone https://github.com/your-org/watchlist2dvr.git
+git clone https://github.com/rizz360/watchlist2dvr.git
 cd watchlist2dvr
 mkdir -p data
 ```
@@ -144,10 +150,10 @@ Edit `config.yaml` — at minimum fill in:
 ### 4. First run (dry-run)
 
 ```sh
-docker compose up --build
+docker compose up
 ```
 
-`dry_run: true` is the default. Nothing is written to the DVR. Check the logs and open the dashboard at **http://localhost:3000** to verify match quality.
+`dry_run: true` is the default. Nothing is written to the DVR. The image is pulled automatically from Docker Hub. Check the logs and open the dashboard at **http://localhost:3000** to verify match quality.
 
 ### 5. Enable scheduling
 
@@ -163,7 +169,7 @@ scheduler:
 Then run in the background:
 
 ```sh
-docker compose up -d --build
+docker compose up -d
 ```
 
 ---
@@ -495,7 +501,7 @@ The default `docker-compose.yml` runs two services:
 
 | Service | Image |
 |---|---|
-| `watchlist2dvr` | Built from local `Dockerfile` |
+| `watchlist2dvr` | [`irizzu/watchlist2dvr:latest`](https://hub.docker.com/r/irizzu/watchlist2dvr) (pulled from Docker Hub) |
 | `redis` | `redis:7-alpine` with AOF persistence |
 
 Mount your IMDb CSVs and config:
