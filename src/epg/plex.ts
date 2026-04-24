@@ -15,6 +15,8 @@ interface PlexProvidersContainer {
 
 interface PlexEpgItem {
   ratingKey: string
+  key: string
+  guid: string
   title: string
   year?: number
   summary?: string
@@ -113,6 +115,8 @@ export class PlexEpgProvider implements EpgProvider {
       return [
         {
           eventId: item.ratingKey,
+          guid: item.guid,
+          key: item.key,
           title: item.title,
           startTime: new Date(channel.beginsAt * 1000),
           endTime: channel.endsAt ? new Date(channel.endsAt * 1000) : new Date(channel.beginsAt * 1000),

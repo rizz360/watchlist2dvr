@@ -1,5 +1,5 @@
 import axios from "axios"
-import type { DvrAdapter, DvrEntry } from "./index.js"
+import type { DvrAdapter, DvrEntry, DvrScheduleHints } from "./index.js"
 
 interface TvhDvrEntry {
   uuid: string
@@ -26,7 +26,7 @@ export class TvheadendDvrAdapter implements DvrAdapter {
     return this.username ? { username: this.username, password: this.password } : undefined
   }
 
-  async scheduleEvent(eventId: string): Promise<void> {
+  async scheduleEvent({ eventId }: DvrScheduleHints): Promise<void> {
     await axios.post(
       `${this.baseUrl}/api/dvr/entry/create`,
       new URLSearchParams({ event_id: eventId, config_uuid: "" }),

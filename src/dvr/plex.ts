@@ -1,6 +1,6 @@
 import axios from "axios"
 import http from "http"
-import type { DvrAdapter, DvrEntry } from "./index.js"
+import type { DvrAdapter, DvrEntry, DvrScheduleHints } from "./index.js"
 
 const ipv4Agent = new http.Agent({ family: 4 })
 
@@ -88,20 +88,27 @@ export class PlexDvrAdapter implements DvrAdapter {
     return id
   }
 
-  async scheduleEvent(eventId: string): Promise<void> {
+  async scheduleEvent({ eventId, guid, title, key }: DvrScheduleHints): Promise<void> {
     const providerId = await this.getProviderId()
-    // The EPG returns ratingKeys double-encoded (e.g. tv%2Eplex%2Exmltv%3A%2F%2Fmovie%2FNew%2520Moon...).
-    // Plex stores hints[ratingKey] as the value it receives after one HTTP query-string URL-decode.
-    // So to make Plex store (and resolve) the double-encoded ratingKey, we must encode it one more
-    // time with encodeURIComponent — the HTTP layer decodes once, leaving the double-encoded form.
+    // Build query string with URLSearchParams for all standard params.
     const qs = new URLSearchParams({
       "X-Plex-Token": this.token,
       type: "1",
       targetLibrarySectionID: String(this.librarySectionId),
       "params[mediaProviderID]": String(providerId),
       "prefs[oneShot]": "true",
-    }).toString()
-    const url = `${this.baseUrl}/media/subscriptions?${qs}&hints[ratingKey]=${encodeURIComponent(eventId)}`
+      // hints[ratingKey]: pass the ratingKey as-is (already double-encoded from EPG).
+      // URLSearchParams will percent-encode it once more; the HTTP layer decodes once,
+      // leaving the double-encoded form that Plex stores and resolves correctly.
+      "hints[ratingKey]": eventId,
+    })
+    // hints[guid]: required for Plex to link the subscription to the correct show entity.
+    if (guid) qs.set("hints[guid]", guid)
+    // hints[title]: required for Plex to display a non-empty movie title in the DVR queue.
+    if (title) qs.set("hints[title]", title)
+    // hints[key]: optional full metadata path — extra context for Plex EPG resolution.
+    if (key) qs.set("hints[key]", key)
+    const url = `${this.baseUrl}/media/subscriptions?${qs.toString()}`
     await axios.post(url, null, {
       headers: { Accept: "application/json" },
       httpAgent: ipv4Agent,
