@@ -1,6 +1,6 @@
 # watchlist2dvr
 
-[![Build](https://img.shields.io/github/actions/workflow/status/rizz360/watchlist2dvr/docker-publish.yml?branch=main&label=build&logo=github)](https://github.com/rizz360/watchlist2dvr/actions/workflows/docker-publish.yml)
+[![Build](https://github.com/rizz360/watchlist2dvr/actions/workflows/docker-publish.yml/badge.svg?branch=main)](https://github.com/rizz360/watchlist2dvr/actions/workflows/docker-publish.yml)
 [![Docker Image](https://img.shields.io/docker/v/irizzu/watchlist2dvr?label=docker&logo=docker&logoColor=white)](https://hub.docker.com/r/irizzu/watchlist2dvr)
 [![Docker Pulls](https://img.shields.io/docker/pulls/irizzu/watchlist2dvr?logo=docker&logoColor=white)](https://hub.docker.com/r/irizzu/watchlist2dvr)
 [![Node](https://img.shields.io/badge/node-22-brightgreen?logo=node.js&logoColor=white)](https://nodejs.org)
