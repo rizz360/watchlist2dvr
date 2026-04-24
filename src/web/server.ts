@@ -365,6 +365,7 @@ a:hover{text-decoration:underline}
   <button onclick="showTab('debug',this)">Debug</button>
   <button onclick="showTab('sources',this)">Sources</button>
 </nav>
+<main>
   <div id="tab-watchlist" class="tab active">
     <div class="stat-row" id="stat-row"></div>
     <div class="filter-bar">
