@@ -42,7 +42,9 @@ Every layer is a swappable adapter. The matching engine never knows which source
 - **Idempotency** — never schedules the same movie twice (Redis distributed lock + state check + live DVR queue check)
 - **Dry-run mode** — validate match quality before writing anything to the DVR
 - **Aggressive caching** — TMDB lookups cached 7 days, library index 6 hours; EPG is always live
-- **Read-only web dashboard** — full watchlist status with search/filter, upcoming recordings, run history, TMDB cache debug
+- **Notifications** — push alerts via [ntfy](https://ntfy.sh) when a recording is scheduled; supports public topics and authenticated private servers
+- **TMDB watchlist sync** — optionally mirrors all collected IMDb IDs to your TMDB watchlist each run (requires a TMDB session ID)
+- **Read-only web dashboard** — full watchlist status with search/filter, upcoming recordings, run history, TMDB cache debug, cache clear buttons
 - **Docker-first** — ships as a single container alongside Redis; Tailscale MagicDNS supported via `dns: [100.100.100.100]`
 
 ---
@@ -225,6 +227,8 @@ library:
 # --- TMDB (required for localization) ---
 tmdb:
   api_key: ""
+  # sync_watchlist:             # optional — sync all collected IMDb IDs to your TMDB watchlist each run
+  #   session_id: ""            # obtain: see "TMDB watchlist sync" section below
 
 # --- Matching ---
 matching:
@@ -261,6 +265,12 @@ scheduler:
   mode: polling                 # polling | oneshot
   interval_minutes: 60
   dry_run: true                 # true = log matches, never write to DVR
+
+# --- Notifications (optional) ---
+# notifications:
+#   - type: ntfy
+#     url: https://ntfy.sh/your-topic   # or http://your-ntfy-server/topic
+#     token: ""                         # optional — for private/authenticated topics
 
 # --- Web UI ---
 web:
@@ -390,6 +400,64 @@ All eight fields can be used as `field` values in `mappings`.
 
 ---
 
+## Notifications
+
+watchlist2dvr can push a notification every time a recording is successfully scheduled.
+
+### ntfy
+
+[ntfy](https://ntfy.sh) is a simple self-hostable push-notification service. Add one or more entries under `notifications` in `config.yaml`:
+
+```yaml
+notifications:
+  - type: ntfy
+    url: https://ntfy.sh/your-topic        # public topic — no auth needed
+    # url: http://your-ntfy-server/topic   # self-hosted
+    # token: "YOUR_NTFY_ACCESS_TOKEN"      # required for private/authenticated topics
+```
+
+Each scheduled recording sends a message like: `Scheduled: Die Hard (1988)`.
+
+Multiple notifiers are supported — list as many `ntfy` entries as you like (e.g. one for a phone and one for a home server).
+
+---
+
+## TMDB watchlist sync
+
+When enabled, watchlist2dvr resolves every IMDb ID collected from your sources to a TMDB ID and adds it to your TMDB watchlist each run. This keeps your TMDB watchlist in sync with whatever sources you configure (IMDb, Trakt, public lists, etc.).
+
+### Setup
+
+Getting a TMDB `session_id` requires three API calls (one-time):
+
+```sh
+# 1. Create a request token
+curl "https://api.themoviedb.org/3/authentication/token/new?api_key=YOUR_KEY"
+# → copy request_token
+
+# 2. Approve it in the browser
+open "https://www.themoviedb.org/authenticate/{request_token}"
+
+# 3. Exchange for a session ID
+curl -X POST "https://api.themoviedb.org/3/authentication/session/new?api_key=YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"request_token": "..."}'
+# → copy session_id
+```
+
+Then add to `config.yaml`:
+
+```yaml
+tmdb:
+  api_key: "YOUR_KEY"
+  sync_watchlist:
+    session_id: "YOUR_TMDB_SESSION_ID"
+```
+
+TMDB watchlist sync runs once per scheduler cycle, right after sources are aggregated (before library check or EPG matching). Items already in your TMDB watchlist are silently skipped.
+
+---
+
 ## Web dashboard
 
 Available at `http://localhost:3000` (or your configured port).
@@ -398,8 +466,8 @@ Available at `http://localhost:3000` (or your configured port).
 |---|---|
 | **Watchlist** | All items from the last run — matched, scheduled, in-library, and unmatched, with IMDb links, user ratings, and source badges. Filterable by status and searchable by title. |
 | **Upcoming** | Live DVR queue (TVHeadend or Plex subscriptions), filtered to scheduled/recording, sorted by creation time |
-| **History** | Last 50 runs — item counts, scheduled count, errors, dry-run indicator |
-| **Debug** | TMDB cache size by key prefix, live IMDb ID lookup |
+| **History** | Last 50 runs — item counts, scheduled count, errors, dry-run indicator; each run expands to show matched movies with their source list |
+| **Debug** | TMDB cache size by key prefix, live IMDb ID lookup, scheduled-state viewer, one-click cache clear buttons per cache type |
 | **Sources** | Status of each `imdb_auto` source (last fetch time, item count, errors) + refresh button + step-by-step cookie guide |
 
 ---
@@ -491,7 +559,7 @@ Tests cover the normalization pipeline and matching engine. All 20 tests run in 
 - [x] Public IMDb lists — charts and public user lists (`imdb_public_lists` source)
 - [ ] Trakt OAuth flow (currently public watchlist / API key only)
 - [ ] Manual match override via web UI
-- [ ] Notification on successful schedule (webhook / Apprise)
+- [x] Notifications on successful schedule — ntfy push alerts (`notifications` config block)
 - [ ] Series / episode support
 - [x] TMDB lists / collections / named endpoints source (`tmdb_lists`)
 - [x] Plex DVR backend (EPG via Plex Live TV + subscriptions API)
