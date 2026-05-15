@@ -540,4 +540,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for project structure, development setup,
 - [ ] Series / episode support
 - [x] TMDB lists / collections / named endpoints source (`tmdb_lists`)
 - [x] Plex DVR backend (EPG via Plex Live TV + subscriptions API)
-- [ ] Jellyfin DVR backend
+- [x] Jellyfin DVR backend

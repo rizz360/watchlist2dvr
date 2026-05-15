@@ -20,6 +20,22 @@ export interface DvrScheduleHints {
   airingChannels?: string
   /** Plex airing times payload from EPG metadata. */
   airingTimes?: string
+  /** Provider channel id for the selected airing. */
+  channelId?: string
+  /** Provider channel name for the selected airing. */
+  channelName?: string
+  /** Program start date/time. */
+  startTime?: Date
+  /** Program end date/time. */
+  endTime?: Date
+  /** Program overview/description. */
+  description?: string
+  /** Jellyfin external program id. */
+  externalProgramId?: string
+  /** Jellyfin server id associated with the program. */
+  serverId?: string
+  /** Jellyfin backend service name (often `Emby`). */
+  serviceName?: string
 }
 
 export interface DvrAdapter {

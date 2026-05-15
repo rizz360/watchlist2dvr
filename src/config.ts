@@ -114,7 +114,13 @@ const PlexDvrSchema = z.object({
   epg_provider: z.string().optional(),
 })
 
-const DvrSchema = z.discriminatedUnion("type", [TvheadendDvrSchema, PlexDvrSchema])
+const JellyfinDvrSchema = z.object({
+  type: z.literal("jellyfin"),
+  url: z.string().url().transform((u) => u.replace(/\/+$/, "")),
+  api_key: z.string().min(1),
+})
+
+const DvrSchema = z.discriminatedUnion("type", [TvheadendDvrSchema, PlexDvrSchema, JellyfinDvrSchema])
 
 // ---------------------------------------------------------------------------
 // Notifications

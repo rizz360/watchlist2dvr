@@ -15,9 +15,11 @@ import { NoopLibraryChecker, type LibraryChecker } from "./library/index.js"
 import { TmdbResolver } from "./resolvers/tmdb.js"
 import { TvheadendEpgProvider } from "./epg/tvheadend.js"
 import { PlexEpgProvider } from "./epg/plex.js"
+import { JellyfinEpgProvider } from "./epg/jellyfin.js"
 import type { EpgProvider } from "./epg/index.js"
 import { TvheadendDvrAdapter } from "./dvr/tvheadend.js"
 import { PlexDvrAdapter } from "./dvr/plex.js"
+import { JellyfinDvrAdapter } from "./dvr/jellyfin.js"
 import type { DvrAdapter } from "./dvr/index.js"
 import { MatchingEngine } from "./matching/engine.js"
 import { StateStore } from "./state/redis.js"
@@ -84,11 +86,15 @@ function buildDeps(config: Config, redis: Redis): RunDeps {
     epg:
       config.dvr.type === "plex"
         ? new PlexEpgProvider(config.dvr.url, config.dvr.token, config.dvr.epg_provider)
-        : new TvheadendEpgProvider(config.dvr.url, config.dvr.username, config.dvr.password),
+        : config.dvr.type === "jellyfin"
+          ? new JellyfinEpgProvider(config.dvr.url, config.dvr.api_key)
+          : new TvheadendEpgProvider(config.dvr.url, config.dvr.username, config.dvr.password),
     dvr:
       config.dvr.type === "plex"
         ? new PlexDvrAdapter(config.dvr.url, config.dvr.token, config.dvr.library_section_id)
-        : new TvheadendDvrAdapter(config.dvr.url, config.dvr.username, config.dvr.password),
+        : config.dvr.type === "jellyfin"
+          ? new JellyfinDvrAdapter(config.dvr.url, config.dvr.api_key)
+          : new TvheadendDvrAdapter(config.dvr.url, config.dvr.username, config.dvr.password),
     engine: new MatchingEngine({
       preferredLanguage: config.matching.preferred_language,
       fallbackLanguages: config.matching.fallback_languages,
@@ -381,6 +387,14 @@ async function run(deps: RunDeps): Promise<void> {
         key: m.event.key,
         airingChannels: m.event.airingChannels,
         airingTimes: m.event.airingTimes,
+        channelId: m.event.channelId,
+        channelName: m.event.channelName,
+        startTime: m.event.startTime,
+        endTime: m.event.endTime,
+        description: m.event.description,
+        externalProgramId: m.event.externalProgramId,
+        serverId: m.event.serverId,
+        serviceName: m.event.serviceName,
       })
       await state.markScheduled(m.item.imdbId)
       console.log(`  [dvr] Scheduled: "${m.item.originalTitle}"`)
@@ -514,6 +528,17 @@ async function checkConnectivity(config: Config): Promise<void> {
       name: `TVHeadend DVR (${tvhDvr.url})`,
       fn: async () => {
         await axios.get(`${tvhDvr.url}/api/serverinfo`, { timeout: 8_000 })
+      },
+    })
+  } else if (config.dvr.type === "jellyfin") {
+    const jfDvr = config.dvr
+    checks.push({
+      name: `Jellyfin DVR (${jfDvr.url})`,
+      fn: async () => {
+        await axios.get(`${jfDvr.url}/System/Info/Public`, {
+          headers: { "X-Emby-Token": jfDvr.api_key },
+          timeout: 8_000,
+        })
       },
     })
   }

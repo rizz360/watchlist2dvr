@@ -8,6 +8,12 @@ export interface EpgEvent {
   airingChannels?: string
   /** Plex airing time payload as comma-separated epoch seconds: `start,end,start,end,...`. */
   airingTimes?: string
+  /** Jellyfin external program id. */
+  externalProgramId?: string
+  /** Jellyfin server id associated with the program. */
+  serverId?: string
+  /** Jellyfin backend service name (often `Emby`). */
+  serviceName?: string
   title: string
   startTime: Date
   endTime: Date
