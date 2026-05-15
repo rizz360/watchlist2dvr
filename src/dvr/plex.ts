@@ -88,15 +88,29 @@ export class PlexDvrAdapter implements DvrAdapter {
     return id
   }
 
-  async scheduleEvent({ eventId, guid, title, key }: DvrScheduleHints): Promise<void> {
+  async scheduleEvent({ eventId, guid, title, key, airingChannels, airingTimes }: DvrScheduleHints): Promise<void> {
     const providerId = await this.getProviderId()
-    // Build query string with URLSearchParams for all standard params.
+    // Mirror Plex Web's subscription payload so subscriptions include next airing metadata.
     const qs = new URLSearchParams({
       "X-Plex-Token": this.token,
       type: "1",
       targetLibrarySectionID: String(this.librarySectionId),
+      targetSectionLocationID: String(providerId),
+      includeGrabs: "1",
+      "prefs[minVideoQuality]": "0",
+      "prefs[replaceLowerQuality]": "false",
+      "prefs[recordPartials]": "false",
+      "prefs[startOffsetMinutes]": "0",
+      "prefs[endOffsetMinutes]": "5",
+      "prefs[lineupChannel]": "",
+      "prefs[startTimeslot]": "-1",
+      "prefs[comskipEnabled]": "-1",
+      "prefs[comskipMethod]": "2",
+      "prefs[remoteMedia]": "false",
       "params[mediaProviderID]": String(providerId),
+      "params[libraryType]": "1",
       "prefs[oneShot]": "true",
+      "hints[type]": "1",
       // hints[ratingKey]: pass the ratingKey as-is (already double-encoded from EPG).
       // URLSearchParams will percent-encode it once more; the HTTP layer decodes once,
       // leaving the double-encoded form that Plex stores and resolves correctly.
@@ -108,6 +122,9 @@ export class PlexDvrAdapter implements DvrAdapter {
     if (title) qs.set("hints[title]", title)
     // hints[key]: optional full metadata path — extra context for Plex EPG resolution.
     if (key) qs.set("hints[key]", key)
+    // params[airingChannels]/params[airingTimes]: direct airing context from EPG.
+    if (airingChannels) qs.set("params[airingChannels]", airingChannels)
+    if (airingTimes) qs.set("params[airingTimes]", airingTimes)
     const url = `${this.baseUrl}/media/subscriptions?${qs.toString()}`
     await axios.post(url, null, {
       headers: { Accept: "application/json" },

@@ -4,6 +4,10 @@ export interface EpgEvent {
   guid?: string
   /** Full metadata key path as returned by the EPG provider. Used by Plex DVR. */
   key?: string
+  /** Plex airing channel payload (e.g. `<channelIdentifier>=<urlencoded channel label>`). */
+  airingChannels?: string
+  /** Plex airing time payload as comma-separated epoch seconds: `start,end,start,end,...`. */
+  airingTimes?: string
   title: string
   startTime: Date
   endTime: Date

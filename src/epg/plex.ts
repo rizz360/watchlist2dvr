@@ -106,17 +106,35 @@ export class PlexEpgProvider implements EpgProvider {
 
     const items = resp.data.MediaContainer.Metadata ?? []
     return items.flatMap((item): EpgEvent[] => {
-      const channel = item.Media?.[0]
+      const airings = (item.Media ?? []).filter((m) => !!m.beginsAt)
+      const channel = airings[0]
       if (!channel?.beginsAt) return []
       // Skip entries shorter than 60 minutes — these are TV episodes misclassified
       // as movies by the XMLTV guide (e.g. SpongeBob series episodes show as type=movie)
       const durationMinutes = channel.endsAt ? (channel.endsAt - channel.beginsAt) / 60 : 0
       if (durationMinutes > 0 && durationMinutes < 60) return []
+
+      const airingTimes = airings
+        .flatMap((a) => [a.beginsAt!, a.endsAt ?? a.beginsAt!])
+        .join(",")
+
+      const airingChannels = [...new Map(
+        airings
+          .filter((a) => !!a.channelIdentifier)
+          .map((a) => {
+            const channelId = a.channelIdentifier!
+            const label = a.channelCallLetters ?? a.channelTitle ?? ""
+            return [channelId, `${channelId}=${encodeURIComponent(label)}`] as const
+          }),
+      ).values()].join(",")
+
       return [
         {
           eventId: item.ratingKey,
           guid: item.guid,
           key: item.key,
+          airingChannels: airingChannels || undefined,
+          airingTimes: airingTimes || undefined,
           title: item.title,
           startTime: new Date(channel.beginsAt * 1000),
           endTime: channel.endsAt ? new Date(channel.endsAt * 1000) : new Date(channel.beginsAt * 1000),

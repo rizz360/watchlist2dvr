@@ -16,6 +16,10 @@ export interface DvrScheduleHints {
   title?: string
   /** Full metadata key hint (provider path). Used by Plex DVR. */
   key?: string
+  /** Plex airing channels payload from EPG metadata. */
+  airingChannels?: string
+  /** Plex airing times payload from EPG metadata. */
+  airingTimes?: string
 }
 
 export interface DvrAdapter {

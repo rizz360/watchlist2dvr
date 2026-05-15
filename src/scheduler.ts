@@ -374,7 +374,14 @@ async function run(deps: RunDeps): Promise<void> {
         continue
       }
       console.log(`  [dvr] Scheduling: "${m.item.originalTitle}" (eventId=${m.event.eventId}, epgTitle="${m.event.title}")`)
-      await dvr.scheduleEvent({ eventId: m.event.eventId, guid: m.event.guid, title: m.event.title, key: m.event.key })
+      await dvr.scheduleEvent({
+        eventId: m.event.eventId,
+        guid: m.event.guid,
+        title: m.event.title,
+        key: m.event.key,
+        airingChannels: m.event.airingChannels,
+        airingTimes: m.event.airingTimes,
+      })
       await state.markScheduled(m.item.imdbId)
       console.log(`  [dvr] Scheduled: "${m.item.originalTitle}"`)
       newlyScheduledTitles.push(m.item.originalTitle)
