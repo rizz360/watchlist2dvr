@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/rizz360/watchlist2dvr/compare/v0.3.0...v0.4.0) (2026-05-15)
+
+
+### Features
+
+* **dvr:** add Jellyfin Live TV scheduling support ([b43e9d6](https://github.com/rizz360/watchlist2dvr/commit/b43e9d6e49fe22425c1e2f954ea5c887e262996a))
+
+
+### Bug Fixes
+
+* **plex:** send full DVR payload for next airings ([e3b1df5](https://github.com/rizz360/watchlist2dvr/commit/e3b1df5b9864efcd5d29dc745da8d9424e6621a9))
+* use correct /Items endpoint for Jellyfin EPG search ([6ed66ab](https://github.com/rizz360/watchlist2dvr/commit/6ed66ab141c85870cbe001a24bcf0fc55e3c44d4))
+
 ## [0.3.0](https://github.com/rizz360/watchlist2dvr/compare/v0.2.0...v0.3.0) (2026-04-24)
 
 
