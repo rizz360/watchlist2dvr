@@ -263,6 +263,12 @@ dvr:
 #   epg_provider: "tv.plex.providers.epg.xmltv:9"  # required: EPG provider ID
 #                                                    # find it: GET /media/providers?X-Plex-Token=...
 
+# --- OR: Jellyfin DVR (uses Live TV Programs + SeriesTimers) ---
+# dvr:
+#   type: jellyfin
+#   url: http://jellyfin:8096
+#   api_key: ""                 # Jellyfin Dashboard → API Keys
+
 # --- State / cache ---
 state:
   redis_url: redis://redis:6379

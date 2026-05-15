@@ -106,12 +106,27 @@ Deleted keys: `1699,1700,1701,1702,1703,1704,1705,1706,1707`
 Deletion endpoint that worked:
 - `DELETE /media/subscriptions/{key}?X-Plex-Token=...`
 
-## Next Code Change (planned)
+## Code Changes Implemented (2026-05-15)
 
-In the Plex DVR adapter, `scheduleEvent()` currently receives only `eventId` (ratingKey). To reliably create linked entries, the scheduler must pass richer event context from EPG to DVR:
-- `ratingKey`
-- `guid`
-- `title`
-- optional `key`
+✅ Plex DVR adapter now receives full EPG context from scheduler:
+- Extended `DvrScheduleHints` type with airing metadata: `channelId`, `channelName`, `startTime`, `endTime`, `description`
+- Updated Plex EPG provider to extract all airings + dedupe channels from EPG Media array
+- Plex DVR adapter now sends UI-aligned parameter set (20+ params) including:
+  - Full prefs block (quality, offsets, comskip, one-shot, etc.)
+  - `targetSectionLocationID` (critical for full subscription type)
+  - Optional `params[airingChannels]` and `params[airingTimes]` from EPG
+- Result: subscriptions now have `airingsType="New Airings Only"` and populated `nextScheduledRecording`
 
-This likely requires extending the shared EPG event type and DVR adapter API, then wiring data through the scheduler.
+✅ Jellyfin DVR adapter fully implemented (2026-05-15):
+- **EPG Provider** (`src/epg/jellyfin.ts`): Uses `/Items` endpoint with `includeItemTypes=LiveTvProgram` to search broadcasts
+- **DVR Adapter** (`src/dvr/jellyfin.ts`): POSTs to `/LiveTv/SeriesTimers` with JSON body
+- **Scheduler wiring**: Full hints passed including Jellyfin-specific fields (serverId, serviceName, externalProgramId)
+- **Config schema**: Added JellyfinDvrSchema with type/url/api_key
+- **Testing**: Verified EPG search finds "After Love (2021)" broadcasts and scheduling POST succeeds
+
+## Verified Working
+
+- Plex DVR: "After Love (2021)" and "Dragonball Z: Kampf der Götter (2013)" subscriptions created with full metadata
+- Jellyfin DVR: EPG search locates "After Love (2021)" (2 broadcasts on 2026-05-25), SeriesTimer POST succeeds
+- All 42 tests pass
+- TypeScript compile clean
