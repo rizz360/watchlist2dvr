@@ -1,6 +1,6 @@
 {
   "name": "watchlist2dvr",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Synchronizes a movie watchlist with a DVR backend via EPG matching",
   "private": true,
   "type": "module",
