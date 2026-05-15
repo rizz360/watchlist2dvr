@@ -25,14 +25,23 @@ export class JellyfinEpgProvider implements EpgProvider {
   ) {}
 
   async searchByTitle(title: string): Promise<EpgEvent[]> {
-    const resp = await axios.get<JellyfinProgramsResponse>(`${this.baseUrl}/LiveTv/Programs`, {
+    const resp = await axios.get<JellyfinProgramsResponse>(`${this.baseUrl}/Items`, {
       headers: {
         Accept: "application/json",
         "X-Emby-Token": this.apiKey,
       },
       params: {
-        SearchTerm: title,
-        Limit: 100,
+        searchTerm: title,
+        limit: 100,
+        recursive: true,
+        includeItemTypes: "LiveTvProgram",
+        isMovie: false,
+        isSeries: false,
+        isNews: false,
+        isKids: false,
+        isSports: false,
+        imageTypeLimit: 1,
+        enableTotalRecordCount: false,
       },
       timeout: 30_000,
     })
