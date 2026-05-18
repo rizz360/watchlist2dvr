@@ -1,4 +1,4 @@
-# watchlist2dvr
+# watchlist2dvr 📺🎬
 
 [![Build](https://github.com/rizz360/watchlist2dvr/actions/workflows/docker-publish.yml/badge.svg?branch=main)](https://github.com/rizz360/watchlist2dvr/actions/workflows/docker-publish.yml)
 [![Release](https://img.shields.io/github/v/release/rizz360/watchlist2dvr?label=release&logo=github)](https://github.com/rizz360/watchlist2dvr/releases)
