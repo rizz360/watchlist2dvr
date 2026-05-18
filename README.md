@@ -39,6 +39,8 @@ docker compose up -d
 
 The compose file uses `irizzu/watchlist2dvr:latest` and pulls the image from Docker Hub automatically. Start by filling in the required config values in `config.yaml`: at minimum a source, `tmdb.api_key`, one library checker if you want ownership checks, and a DVR backend.
 
+If you also want to convert recorded `.ts` files into `.mkv`, this pairs well with [ts-to-mkv](https://github.com/rizz360/ts-to-mkv), a Docker-based tool that preserves folder structure and chooses remux or encode paths with hardware fallback.
+
 ## Documentation
 
 The wiki holds the detailed docs so this README can stay short:
