@@ -527,7 +527,10 @@ async function checkConnectivity(config: Config): Promise<void> {
     checks.push({
       name: `TVHeadend DVR (${tvhDvr.url})`,
       fn: async () => {
-        await axios.get(`${tvhDvr.url}/api/serverinfo`, { timeout: 8_000 })
+        await axios.get(`${tvhDvr.url}/api/serverinfo`, {
+          auth: tvhDvr.username ? { username: tvhDvr.username, password: tvhDvr.password } : undefined,
+          timeout: 8_000,
+        })
       },
     })
   } else if (config.dvr.type === "jellyfin") {

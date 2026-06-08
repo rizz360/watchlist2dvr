@@ -99,7 +99,7 @@ const LibrarySchema = z.discriminatedUnion("type", [LibraryJellyfinSchema, Libra
 
 const TvheadendDvrSchema = z.object({
   type: z.literal("tvheadend"),
-  url: z.string().url(),
+  url: z.string().url().transform((u) => u.replace(/\/+$/, "")),
   username: z.string().default(""),
   password: z.string().default(""),
 })
