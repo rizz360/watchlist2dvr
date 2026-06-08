@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/rizz360/watchlist2dvr/compare/v0.4.0...v0.5.0) (2026-06-08)
+
+
+### Features
+
+* **tvheadend:** align EPG/DVR with JSON API ([5bc53d9](https://github.com/rizz360/watchlist2dvr/commit/5bc53d9291e1aff5b7a284e7fda483991571fbf4))
+
 ## [0.4.0](https://github.com/rizz360/watchlist2dvr/compare/v0.3.0...v0.4.0) (2026-05-15)
 
 
