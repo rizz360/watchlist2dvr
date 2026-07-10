@@ -83,6 +83,38 @@ describe("MatchingEngine", () => {
     expect(matches).toHaveLength(1)
   })
 
+  it("matches on original title when no localized titles are available", () => {
+    const item = makeItem({ originalTitle: "Die Hard", localizedTitles: {} })
+    const { matches, unmatched } = engine.match([item], [makeEvent({ title: "Die Hard" })])
+    expect(unmatched).toHaveLength(0)
+    expect(matches).toHaveLength(1)
+    expect(matches[0].matchedLanguage).toBe("original")
+    expect(matches[0].confidence).toBe("exact")
+  })
+
+  it("reports ambiguous when the title matches but the year does not", () => {
+    const events = [
+      makeEvent({ eventId: "e-remake", title: "Stirb langsam", description: "(2013)" }),
+    ]
+    const { matches, ambiguous, unmatched } = engine.match([makeItem()], events)
+    expect(matches).toHaveLength(0)
+    expect(unmatched).toHaveLength(0)
+    expect(ambiguous).toHaveLength(1)
+    expect(ambiguous[0].reason).toContain("year differs")
+    expect(ambiguous[0].candidates).toHaveLength(1)
+  })
+
+  it("prefers a fallback-language match over a year-rejected preferred-language hit", () => {
+    const events = [
+      makeEvent({ eventId: "e-wrong-year", title: "Stirb langsam", description: "(2013)" }),
+      makeEvent({ eventId: "e-right", title: "Die Hard", description: "(1988)" }),
+    ]
+    const { matches, ambiguous } = engine.match([makeItem()], events)
+    expect(ambiguous).toHaveLength(0)
+    expect(matches).toHaveLength(1)
+    expect(matches[0].event.eventId).toBe("e-right")
+  })
+
   it("picks earliest airing when same movie appears multiple times in EPG", () => {
     const events = [
       makeEvent({ eventId: "e-later", title: "Stirb langsam", startTime: new Date("2026-03-10T20:00:00Z") }),

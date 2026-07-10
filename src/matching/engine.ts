@@ -69,10 +69,22 @@ export class MatchingEngine {
   ): MatchResult | AmbiguousResult | null {
     const languages = [this.config.preferredLanguage, ...this.config.fallbackLanguages]
 
+    // Candidate titles in priority order: configured languages first, then the
+    // original title (may be the only title available when TMDB has no data).
+    const candidates: Array<{ lang: string; title: string }> = []
     for (const lang of languages) {
-      const title = item.localizedTitles[lang] ?? (lang === item.originalTitle ? item.originalTitle : null)
-      if (!title) continue
+      const title = item.localizedTitles[lang]
+      if (title) candidates.push({ lang, title })
+    }
+    if (!candidates.some((c) => c.title === item.originalTitle)) {
+      candidates.push({ lang: "original", title: item.originalTitle })
+    }
 
+    // Remember title hits that were rejected only by the year filter so they
+    // can be reported as ambiguous if nothing else matches.
+    let yearRejected: AmbiguousResult | null = null
+
+    for (const { lang, title } of candidates) {
       const normalizedTarget = normalize(title)
 
       // Tier 1: exact match
@@ -87,6 +99,7 @@ export class MatchingEngine {
           )
           return { item, event: best.event, matchedTitle: title, matchedLanguage: lang, confidence: "exact" }
         }
+        yearRejected ??= this.buildYearAmbiguity(item, title, exactHits)
       }
 
       // Tier 2: suffix match — EPG title may prefix franchise/series name, e.g.
@@ -107,16 +120,32 @@ export class MatchingEngine {
             )
             return { item, event: best.event, matchedTitle: title, matchedLanguage: lang, confidence: "suffix" }
           }
+          yearRejected ??= this.buildYearAmbiguity(item, title, suffixHits)
         }
       }
     }
 
     // Tier 3: fuzzy fallback (opt-in)
     if (this.config.fuzzyEnabled) {
-      return this.fuzzyMatch(item, normalizedEvents)
+      const fuzzy = this.fuzzyMatch(item, normalizedEvents)
+      if (fuzzy) return fuzzy
     }
 
-    return null
+    return yearRejected
+  }
+
+  /** Describe why title hits were rejected by the year filter. */
+  private buildYearAmbiguity(
+    item: WatchlistItem,
+    title: string,
+    hits: Array<{ event: EpgEvent; normalizedTitle: string; year?: number }>,
+  ): AmbiguousResult {
+    const epgYears = [...new Set(hits.map((h) => h.year).filter((y): y is number => y !== undefined))]
+    const reason =
+      epgYears.length === 0
+        ? `EPG title "${title}" matched but has no year data (strict year matching is on)`
+        : `EPG title "${title}" matched but year differs (EPG: ${epgYears.join(", ")}; expected ${item.year}±${this.config.yearTolerance})`
+    return { item, candidates: hits.map((h) => h.event), reason }
   }
 
   private filterByYear(
