@@ -171,7 +171,7 @@ async function run(deps: RunDeps): Promise<void> {
   // 2. Filter: already in library
   let remaining = [...allItems.values()]
   let itemsInLibrary = 0
-  const inLibraryItems: Array<{ imdbId: string; originalTitle: string; source: "watchlist" | "rating" | "list"; userRating?: number }> = []
+  const inLibraryItems: Array<{ imdbId: string; originalTitle: string; source: "watchlist" | "rating" | "list"; listLabel?: string; userRating?: number; year?: number }> = []
   for (const checker of checkers) {
     console.log(`  [library] Checking ${remaining.length} item(s) against library...`)
     const results = await Promise.all(
@@ -190,6 +190,7 @@ async function run(deps: RunDeps): Promise<void> {
         source: r.item.source,
         listLabel: r.item.listLabel,
         userRating: r.item.userRating,
+        year: r.item.year,
       })))
     }
     remaining = results.filter((r) => !r.inLibrary).map((r) => r.item)
@@ -216,6 +217,7 @@ async function run(deps: RunDeps): Promise<void> {
       source: r.item.source,
       listLabel: r.item.listLabel,
       userRating: r.item.userRating,
+      year: r.item.year,
     }))
   if (itemsAlreadyScheduled > 0) {
     console.log(`  [state] Skipping ${itemsAlreadyScheduled} item(s) already scheduled`)
@@ -434,6 +436,7 @@ async function run(deps: RunDeps): Promise<void> {
       source: m.item.source,
       listLabel: m.item.listLabel,
       userRating: m.item.userRating,
+      year: m.item.year,
       epgTitle: m.event.title,
       channelName: m.event.channelName,
       startTime: m.event.startTime.toISOString(),
@@ -447,6 +450,7 @@ async function run(deps: RunDeps): Promise<void> {
       source: a.item.source,
       listLabel: a.item.listLabel,
       userRating: a.item.userRating,
+      year: a.item.year,
       reason: a.reason,
     })),
     unmatchedItems: unmatched.map((u) => ({

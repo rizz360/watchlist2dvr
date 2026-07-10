@@ -7,6 +7,7 @@ export interface RunMatch {
   source: "watchlist" | "rating" | "list"
   listLabel?: string
   userRating?: number
+  year?: number
   epgTitle: string
   channelName: string
   startTime: string
@@ -21,6 +22,7 @@ export interface RunAmbiguous {
   source: "watchlist" | "rating" | "list"
   listLabel?: string
   userRating?: number
+  year?: number
   reason: string
 }
 
@@ -50,8 +52,8 @@ export interface RunRecord {
   matches: RunMatch[]
   ambiguousItems: RunAmbiguous[]
   unmatchedItems: RunUnmatched[]
-  inLibraryItems: Array<{ imdbId: string; originalTitle: string; source: "watchlist" | "rating" | "list"; listLabel?: string; userRating?: number }>
-  alreadyScheduledItems: Array<{ imdbId: string; originalTitle: string; source: "watchlist" | "rating" | "list"; listLabel?: string; userRating?: number }>
+  inLibraryItems: Array<{ imdbId: string; originalTitle: string; source: "watchlist" | "rating" | "list"; listLabel?: string; userRating?: number; year?: number }>
+  alreadyScheduledItems: Array<{ imdbId: string; originalTitle: string; source: "watchlist" | "rating" | "list"; listLabel?: string; userRating?: number; year?: number }>
 }
 
 const HISTORY_KEY = "history:runs"
