@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0](https://github.com/rizz360/watchlist2dvr/compare/v0.5.0...v0.6.0) (2026-07-10)
+
+
+### Features
+
+* **web:** dashboard UX improvements ([497f359](https://github.com/rizz360/watchlist2dvr/commit/497f359cabef09d62da2daef4acedf6593a323e4))
+
+
+### Bug Fixes
+
+* hardening and cleanup ([05c926f](https://github.com/rizz360/watchlist2dvr/commit/05c926f7012971ca30ee1344f484d8491053e421))
+* **matching:** try original title in exact/suffix tiers and surface year-mismatch ambiguities ([35f65e7](https://github.com/rizz360/watchlist2dvr/commit/35f65e766d45502acdc377c60549c174116ac205))
+* **web:** dashboard bug fixes ([9b42cc3](https://github.com/rizz360/watchlist2dvr/commit/9b42cc30c6bfd9d93a34d7bbf8ff2762b64d8d51))
+
 ## [0.5.0](https://github.com/rizz360/watchlist2dvr/compare/v0.4.0...v0.5.0) (2026-06-08)
 
 
