@@ -138,8 +138,6 @@ describe("walkForTitlesFromLdJson", () => {
 // ---------------------------------------------------------------------------
 
 describe("watchlist list-ID discovery patterns", () => {
-  const LIST_ID_RE = /ls\d{7,10}/
-
   it("finds list ID in canonical link (rel before href)", () => {
     const html = `<link rel="canonical" href="https://www.imdb.com/list/ls056610540/" />`
     const m = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["'][^"']*\/(ls\d{7,10})[/"'][^>]*>/)

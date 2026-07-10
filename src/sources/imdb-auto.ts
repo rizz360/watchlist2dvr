@@ -191,7 +191,7 @@ export class ImdbAutoSource implements WatchlistSource {
         `IMDb blocked the watchlist page with a bot-detection challenge (HTTP ${res.statusCode}). ` +
           `Two ways to fix this:\n` +
           `  1. Add watchlist_list_id to your imdb_auto config: find it in the IMDb watchlist ` +
-          `page HTML (right-click → View Page Source, search for \'ls0\').\n` +
+          `page HTML (right-click → View Page Source, search for 'ls0').\n` +
           `  2. Add extra_cookies to your imdb_auto config with your full browser session: ` +
           `copy aws-waf-token, session-id, session-token and ubid-main from DevTools ` +
           `(Application → Cookies → https://www.imdb.com).`,

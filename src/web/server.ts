@@ -33,7 +33,14 @@ export function startWebServer(deps: WebDeps, port: number): void {
           service: "watchlist2dvr",
           buildDate,
           lastRun: last
-            ? { at: last.completedAt, scheduled: last.scheduled, matched: last.matchesFound }
+            ? {
+                at: last.completedAt,
+                startedAt: last.startedAt,
+                scheduled: last.scheduled,
+                matched: last.matchesFound,
+                dryRun: last.dryRun,
+                errors: last.errors ?? [],
+              }
             : null,
         })
       })
@@ -109,6 +116,7 @@ export function startWebServer(deps: WebDeps, port: number): void {
             source: m.source,
             listLabel: m.listLabel,
             userRating: m.userRating,
+            year: m.year,
             status: "matched" as const,
             match: m,
           })),
@@ -119,6 +127,7 @@ export function startWebServer(deps: WebDeps, port: number): void {
             source: a.source,
             listLabel: a.listLabel,
             userRating: a.userRating,
+            year: a.year,
             status: "ambiguous" as const,
             reason: a.reason,
           })),
@@ -133,13 +142,15 @@ export function startWebServer(deps: WebDeps, port: number): void {
             year: u.year,
           })),
         ]
-        const items = await Promise.all(
-          rawItems.map(async (item) => {
-            const cached = await deps.redis.get(`tmdb:rating:${item.imdbId}`)
-            const tmdbRating = cached && cached !== "NOT_FOUND" ? parseFloat(cached) : null
-            return { ...item, tmdbRating }
-          }),
-        )
+        // Batch rating lookups into a single MGET instead of one GET per item
+        const ratings = rawItems.length
+          ? await deps.redis.mget(rawItems.map((item) => `tmdb:rating:${item.imdbId}`))
+          : []
+        const items = rawItems.map((item, i) => {
+          const cached = ratings[i]
+          const tmdbRating = cached && cached !== "NOT_FOUND" ? parseFloat(cached) : null
+          return { ...item, tmdbRating }
+        })
         res.json({ items })
       })
       .catch((err: Error) => res.status(500).json({ error: err.message }))
@@ -249,7 +260,9 @@ export function startWebServer(deps: WebDeps, port: number): void {
       if (cfg.type === "imdb_csv") return { type: "imdb_csv", path: cfg.path, minRating: cfg.min_rating }
       if (cfg.type === "imdb_public_lists") return { type: "imdb_public_lists", lists: cfg.lists }
       if (cfg.type === "tmdb_lists") return { type: "tmdb_lists", lists: cfg.lists, pages: cfg.pages }
-      return cfg
+      // Fallback for future source types: expose only the type, never the raw
+      // config (which may contain cookies or API keys).
+      return { type: (cfg as { type: string }).type }
     })
     res.json({ sources })
   })
@@ -301,11 +314,13 @@ nav{padding:0 2rem;border-bottom:1px solid #2a2a4a;background:#13132a;display:fl
 nav button{background:none;border:none;color:#8888aa;padding:.85rem 1.4rem;cursor:pointer;font-size:.88rem;border-bottom:2px solid transparent;transition:color .15s,border-color .15s}
 nav button:hover{color:#c0c0e0}
 nav button.active{color:#a78bfa;border-bottom-color:#a78bfa}
-main{padding:2rem;max-width:1280px}
+main{padding:2rem;max-width:1280px;margin:0 auto}
+@media (max-width:700px){main{padding:1rem}header{padding:1rem}nav{padding:0 1rem;overflow-x:auto}th,td{padding:.5rem .6rem}}
 .tab{display:none}
 .tab.active{display:block}
 .stat-row{display:flex;gap:1rem;margin-bottom:1.75rem;flex-wrap:wrap}
-.stat-card{background:#1a1a30;border:1px solid #2a2a4a;border-radius:8px;padding:.9rem 1.4rem;min-width:130px}
+.stat-card{background:#1a1a30;border:1px solid #2a2a4a;border-radius:8px;padding:.9rem 1.4rem;min-width:130px;cursor:pointer;transition:border-color .15s}
+.stat-card:hover{border-color:#6060a0}
 .stat-card .lbl{font-size:.72rem;color:#6b6b8a;text-transform:uppercase;letter-spacing:.05em}
 .stat-card .val{font-size:1.9rem;font-weight:700;color:#a78bfa;margin-top:.2rem}
 table{width:100%;border-collapse:collapse;font-size:.88rem}
@@ -316,6 +331,7 @@ tr:hover td{background:#1a1a30}
 .tr-library:hover td{background:#142a1c}
 .badge{display:inline-block;padding:.18rem .55rem;border-radius:999px;font-size:.72rem;font-weight:500}
 .badge-exact,.badge-scheduled{background:#1e3a5f;color:#60a5fa}
+.badge-suffix{background:#1e3a4a;color:#7dd3fc}
 .badge-recording{background:#14532d;color:#4ade80}
 .badge-fuzzy{background:#713f12;color:#fbbf24}
 .filter-bar{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:1.2rem}
@@ -328,6 +344,7 @@ tr:hover td{background:#1a1a30}
 .badge-ambiguous{background:#2a2a1a;color:#fbbf24}
 .badge-library{background:#162a1e;color:#4ade80}
 .badge-noepg{background:#1e1e2a;color:#6b6b8a}
+.badge-dryrun{background:#3a2a12;color:#fbbf24}
 .badge-rating{background:#2e1e0a;color:#fbbf24}
 .sec{font-size:.8rem;font-weight:600;color:#8888aa;text-transform:uppercase;letter-spacing:.08em;margin:1.5rem 0 .6rem}
 .empty{color:#4a4a6a;font-size:.88rem;padding:2.5rem 0;text-align:center}
@@ -339,6 +356,9 @@ tr:hover td{background:#1a1a30}
 a{color:#818cf8;text-decoration:none}
 a:hover{text-decoration:underline}
 .err-box{color:#f87171;font-size:.85rem;padding:1rem;background:#2a1a1a;border-radius:6px;margin:.5rem 0}
+.hdr-err{color:#f87171;cursor:pointer}
+#wl-content,#up-content,#hi-content,#debug-content,#debug-scheduled{overflow-x:auto}
+.title-year{color:#6b6b8a;font-size:.8rem}
 .src-card{background:#1a1a30;border:1px solid #2a2a4a;border-radius:8px;padding:.9rem 1.4rem;margin-bottom:.7rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}
 .src-info{flex:1;min-width:0}
 .src-title{font-size:.92rem;font-weight:600;color:#c0c0e0;margin-bottom:.22rem}
@@ -356,14 +376,17 @@ a:hover{text-decoration:underline}
 <body>
 <header>
   <h1>&#128250; watchlist2dvr</h1>
-  <div class="last-run" id="last-run-info">Loading&hellip;</div>
+  <div style="display:flex;align-items:center;gap:.9rem">
+    <div class="last-run" id="last-run-info">Loading&hellip;</div>
+    <button class="refresh-btn" id="btn-refresh-all" onclick="refreshAll()" title="Reload all data">&#8635; Refresh</button>
+  </div>
 </header>
 <nav>
-  <button class="active" onclick="showTab('watchlist',this)">Watchlist</button>
-  <button onclick="showTab('upcoming',this)">Upcoming</button>
-  <button onclick="showTab('history',this)">History</button>
-  <button onclick="showTab('debug',this)">Debug</button>
-  <button onclick="showTab('sources',this)">Sources</button>
+  <button class="active" id="nav-watchlist" onclick="showTab('watchlist')">Watchlist</button>
+  <button id="nav-upcoming" onclick="showTab('upcoming')">Upcoming</button>
+  <button id="nav-history" onclick="showTab('history')">History</button>
+  <button id="nav-debug" onclick="showTab('debug')">Debug</button>
+  <button id="nav-sources" onclick="showTab('sources')">Sources</button>
 </nav>
 <main>
   <div id="tab-watchlist" class="tab active">
@@ -399,7 +422,7 @@ a:hover{text-decoration:underline}
     <div style="margin-top:1.5rem">
       <p class="sec">Look up IMDb ID</p>
       <div style="display:flex;gap:.6rem;margin-top:.5rem">
-        <input id="debug-id-input" type="text" placeholder="tt0088763" style="background:#1a1a30;border:1px solid #2a2a4a;color:#e0e0f0;padding:.5rem .8rem;border-radius:6px;font-size:.88rem;width:220px">
+        <input id="debug-id-input" type="text" placeholder="tt0088763" onkeydown="if(event.key==='Enter')lookupCache()" style="background:#1a1a30;border:1px solid #2a2a4a;color:#e0e0f0;padding:.5rem .8rem;border-radius:6px;font-size:.88rem;width:220px">
         <button onclick="lookupCache()" style="background:#2a2a4a;border:none;color:#a78bfa;padding:.5rem 1rem;border-radius:6px;cursor:pointer;font-size:.88rem">Look up</button>
       </div>
       <div id="debug-lookup-result" style="margin-top:.8rem"></div>
@@ -427,14 +450,15 @@ a:hover{text-decoration:underline}
       <p style="margin-top:.9rem;font-size:.79rem;color:#6b6b8a">The cookie expires when you log out of IMDb. If fetching stops working, re-copy the <code>at-main</code> value from DevTools, update <code>config.yaml</code>, and restart.</p>
     </div>
   </div>
-  </div>
 </main>
 <script>
-function showTab(name, btn) {
+var TAB_NAMES = ['watchlist','upcoming','history','debug','sources'];
+function showTab(name) {
   document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});
   document.querySelectorAll('nav button').forEach(function(b){b.classList.remove('active')});
   document.getElementById('tab-'+name).classList.add('active');
-  btn.classList.add('active');
+  document.getElementById('nav-'+name).classList.add('active');
+  if (location.hash !== '#'+name) history.replaceState(null, '', '#'+name);
 }
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -443,13 +467,34 @@ function fmtDate(iso) {
   if (!iso) return '&mdash;';
   return new Date(iso).toLocaleString();
 }
+function timeAgo(iso) {
+  var s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 0) s = 0;
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s/60) + ' min ago';
+  if (s < 86400) return Math.floor(s/3600) + ' h ago';
+  return Math.floor(s/86400) + ' d ago';
+}
+function fmtDuration(ms) {
+  if (ms == null || isNaN(ms) || ms < 0) return '&mdash;';
+  var min = Math.round(ms / 60000);
+  if (min < 1) return Math.round(ms/1000) + 's';
+  if (min < 60) return min + ' min';
+  var h = Math.floor(min/60);
+  return h + 'h ' + (min % 60) + 'm';
+}
 
 function loadStatus() {
   fetch('/api/status').then(function(r){return r.json()}).then(function(d) {
     var el = document.getElementById('last-run-info');
     var buildPart = d.buildDate ? ' &nbsp;&bull;&nbsp; built ' + new Date(d.buildDate).toLocaleDateString() : '';
     if (d.lastRun) {
-      el.innerHTML = 'Last run: ' + new Date(d.lastRun.at).toLocaleString() + ' \u2014 ' + d.lastRun.scheduled + ' scheduled' + buildPart;
+      var when = '<span title="' + esc(new Date(d.lastRun.at).toLocaleString()) + '">' + timeAgo(d.lastRun.at) + '</span>';
+      var errPart = (d.lastRun.errors && d.lastRun.errors.length)
+        ? ' &nbsp;&bull;&nbsp; <span class="hdr-err" onclick="showTab(&quot;history&quot;)" title="Open history for details">&#9888; ' + d.lastRun.errors.length + ' error' + (d.lastRun.errors.length !== 1 ? 's' : '') + '</span>'
+        : '';
+      var dryPart = d.lastRun.dryRun ? ' <span class="badge badge-dryrun">dry run</span>' : '';
+      el.innerHTML = 'Last run: ' + when + ' \u2014 ' + d.lastRun.scheduled + ' scheduled' + dryPart + errPart + buildPart;
     } else {
       el.innerHTML = 'No runs recorded yet' + buildPart;
     }
@@ -478,6 +523,11 @@ function filterWatchlist() {
   renderWatchlist();
 }
 
+function statClick(filter) {
+  var btn = document.getElementById('fbtn-'+filter);
+  if (btn) setFilter(filter, btn);
+}
+
 function buildListFilterBar(items) {
   var labels = [];
   var seen = {};
@@ -498,9 +548,10 @@ function buildListFilterBar(items) {
 
 function itemRow(item) {
   var listPill = item.listLabel ? '<span class="badge-list-pill">'+esc(item.listLabel)+'</span>' : '';
+  var yearStr = item.year ? ' <span class="title-year">('+item.year+')</span>' : '';
   var displayTitle = (item.localizedTitle && item.localizedTitle !== item.originalTitle)
-    ? esc(item.localizedTitle) + listPill + '<br><small style="color:#6b6b8a">' + esc(item.originalTitle) + '</small>'
-    : esc(item.originalTitle) + listPill;
+    ? esc(item.localizedTitle) + yearStr + listPill + '<br><small style="color:#6b6b8a">' + esc(item.originalTitle) + '</small>'
+    : esc(item.originalTitle) + yearStr + listPill;
   var id = item.imdbId;
   var extLink = id.startsWith('tmdb:')
     ? ' <a href="https://www.themoviedb.org/movie/'+esc(id.slice(5))+'" target="_blank" rel="noopener">&#x2197;</a>'
@@ -525,7 +576,6 @@ function itemRow(item) {
     epg = '<small style="color:#8888aa">'+esc(item.reason)+'</small>';
   } else {
     badge = '<span class="badge badge-noepg">no EPG</span>';
-    if (item.year) epg = String(item.year);
   }
   return '<tr'+rowClass+'><td>'+displayTitle+extLink+'</td><td>'+ratingHtml+'</td><td>'+badge+'</td><td>'+epg+'</td><td>'+airtime+'</td></tr>';
 }
@@ -551,59 +601,21 @@ function renderWatchlist() {
   document.getElementById('wl-content').innerHTML = html;
 }
 
-function renderLists() {
-  var el = document.getElementById('lists-content');
-  if (!wlAllItems.length) {
-    el.innerHTML = '<p class="empty">No data yet &mdash; run the scheduler to populate.</p>';
-    return;
-  }
-  // Group items by listLabel (undefined → "Unknown")
-  var groups = {};
-  var groupOrder = [];
-  wlAllItems.forEach(function(item) {
-    var label = item.listLabel || 'Unknown';
-    if (!groups[label]) { groups[label] = []; groupOrder.push(label); }
-    groups[label].push(item);
-  });
-  var html = '';
-  groupOrder.forEach(function(label) {
-    var items = groups[label];
-    var counts = {matched:0,in_library:0,already_scheduled:0,ambiguous:0,unmatched:0};
-    items.forEach(function(i){ if(counts[i.status]!==undefined) counts[i.status]++; });
-    html += '<div style="margin-bottom:2.5rem">';
-    html += '<div style="display:flex;align-items:baseline;gap:1rem;margin-bottom:.8rem">';
-    html += '<h2 style="font-size:1rem;font-weight:600;color:#a78bfa">'+esc(label)+'</h2>';
-    html += '<span style="font-size:.78rem;color:#6b6b8a">'+items.length+' items &mdash; ';
-    var parts = [];
-    if(counts.matched) parts.push('<span style="color:#60a5fa">'+counts.matched+' matched</span>');
-    if(counts.in_library) parts.push('<span style="color:#4ade80">'+counts.in_library+' in library</span>');
-    if(counts.already_scheduled) parts.push('<span style="color:#60a5fa">'+counts.already_scheduled+' scheduled</span>');
-    if(counts.ambiguous) parts.push('<span style="color:#fbbf24">'+counts.ambiguous+' ambiguous</span>');
-    if(counts.unmatched) parts.push('<span style="color:#6b6b8a">'+counts.unmatched+' no EPG</span>');
-    html += parts.join(', ')+'</span>';
-    html += '</div>';
-    html += '<table><thead><tr><th>Title</th><th>Rating</th><th>Status</th><th>EPG / Channel</th><th>Airtime</th></tr></thead><tbody>';
-    items.forEach(function(item) { html += itemRow(item); });
-    html += '</tbody></table></div>';
-  });
-  el.innerHTML = html;
-}
-
 function loadWatchlist() {
   fetch('/api/watchlist').then(function(r){return r.json()}).then(function(data) {
     var items = data.items || [];
     var counts = {matched:0,in_library:0,already_scheduled:0,ambiguous:0,unmatched:0};
     items.forEach(function(i){ if(counts[i.status]!==undefined) counts[i.status]++; });
     var stats = [
-      ['Total', items.length],
-      ['Matched', counts.matched],
-      ['In Library', counts.in_library],
-      ['Scheduled', counts.already_scheduled],
-      ['Ambiguous', counts.ambiguous],
-      ['No EPG', counts.unmatched]
+      ['Total', items.length, 'all'],
+      ['Matched', counts.matched, 'matched'],
+      ['In Library', counts.in_library, 'in_library'],
+      ['Scheduled', counts.already_scheduled, 'already_scheduled'],
+      ['Ambiguous', counts.ambiguous, 'ambiguous'],
+      ['No EPG', counts.unmatched, 'unmatched']
     ];
     document.getElementById('stat-row').innerHTML = stats.map(function(s) {
-      return '<div class="stat-card"><div class="lbl">'+s[0]+'</div><div class="val">'+s[1]+'</div></div>';
+      return '<div class="stat-card" onclick="statClick(&quot;'+s[2]+'&quot;)" title="Filter: '+s[0]+'"><div class="lbl">'+s[0]+'</div><div class="val">'+s[1]+'</div></div>';
     }).join('');
     if (!items.length) {
       document.getElementById('wl-content').innerHTML = '<p class="empty">No data yet &mdash; run the scheduler to populate.</p>';
@@ -611,7 +623,9 @@ function loadWatchlist() {
     }
     var order = {matched:0,ambiguous:1,unmatched:2,in_library:3,already_scheduled:4};
     items.sort(function(a,b){
-      return (order[a.status]||99)-(order[b.status]||99) || a.originalTitle.localeCompare(b.originalTitle);
+      var ra = order[a.status] !== undefined ? order[a.status] : 99;
+      var rb = order[b.status] !== undefined ? order[b.status] : 99;
+      return ra-rb || a.originalTitle.localeCompare(b.originalTitle);
     });
     wlAllItems = items;
     buildListFilterBar(items);
@@ -625,12 +639,15 @@ function loadUpcoming() {
   fetch('/api/upcoming').then(function(r){return r.json()}).then(function(entries) {
     var el = document.getElementById('up-content');
     if (!entries.length) { el.innerHTML = '<p class="empty">No upcoming recordings scheduled.</p>'; return; }
-    var html = '<table><thead><tr><th>Title</th><th>Channel</th><th>Start</th><th>End</th><th>Status</th></tr></thead><tbody>';
+    var html = '<table><thead><tr><th>Title</th><th>Channel</th><th>Start</th><th>Duration</th><th>Status</th></tr></thead><tbody>';
     entries.forEach(function(e) {
+      var dur = (e.startTime && e.endTime)
+        ? fmtDuration(new Date(e.endTime).getTime() - new Date(e.startTime).getTime())
+        : '&mdash;';
       html += '<tr><td>'+esc(e.title)+'</td>';
       html += '<td>'+(e.channelName ? esc(e.channelName) : esc(e.channelId))+'</td>';
       html += '<td>'+fmtDate(e.startTime)+'</td>';
-      html += '<td>'+fmtDate(e.endTime)+'</td>';
+      html += '<td>'+dur+'</td>';
       html += '<td><span class="badge badge-'+esc(e.status)+'">'+esc(e.status)+'</span></td></tr>';
     });
     html += '</tbody></table>';
@@ -647,7 +664,10 @@ function loadHistory() {
     var html = '';
     runs.forEach(function(run) {
       html += '<div class="run-card">';
-      html += '<div class="run-time">'+fmtDate(run.startedAt)+(run.dryRun ? ' <span class="badge badge-dryrun">dry run</span>' : '')+'</div>';
+      var took = (run.startedAt && run.completedAt)
+        ? ' &nbsp;&bull;&nbsp; took '+fmtDuration(new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime())
+        : '';
+      html += '<div class="run-time">'+fmtDate(run.startedAt)+took+(run.dryRun ? ' <span class="badge badge-dryrun">dry run</span>' : '')+'</div>';
       html += '<div class="run-stats">';
       [['Total',run.itemsTotal],['Matched',run.matchesFound],['Scheduled',run.scheduled],
        ['Ambiguous',run.ambiguous],['Unmatched',run.unmatched],['In library',run.itemsInLibrary]
@@ -660,9 +680,10 @@ function loadHistory() {
         html += '<details style="margin-top:.7rem"><summary style="cursor:pointer;font-size:.78rem;color:#8888aa;user-select:none">'+run.matches.length+' matched movie'+(run.matches.length!==1?'s':'')+'</summary>';
         html += '<table style="margin-top:.5rem"><thead><tr><th>Title</th><th>List</th><th>EPG / Channel</th><th>Airtime</th><th>Match</th></tr></thead><tbody>';
         run.matches.forEach(function(m) {
+          var yearStr = m.year ? ' <span class="title-year">('+m.year+')</span>' : '';
           var displayTitle = (m.localizedTitle && m.localizedTitle !== m.originalTitle)
-            ? esc(m.localizedTitle)+'<br><small style="color:#6b6b8a">'+esc(m.originalTitle)+'</small>'
-            : esc(m.originalTitle);
+            ? esc(m.localizedTitle)+yearStr+'<br><small style="color:#6b6b8a">'+esc(m.originalTitle)+'</small>'
+            : esc(m.originalTitle)+yearStr;
           var listCell = m.listLabel
             ? '<span class="badge-list-pill">'+esc(m.listLabel)+'</span>'
             : '<span style="color:#6b6b8a">'+esc(m.source)+'</span>';
@@ -822,8 +843,20 @@ function refreshImdbSource(userId) {
     });
 }
 
-loadStatus(); loadWatchlist(); loadUpcoming(); loadHistory(); loadDebug(); loadScheduledState(); loadSources();
-setInterval(function(){ loadStatus(); loadWatchlist(); loadUpcoming(); loadHistory(); loadDebug(); loadScheduledState(); loadSources(); }, 5*60*1000);
+function refreshAll() {
+  loadStatus(); loadWatchlist(); loadUpcoming(); loadHistory(); loadDebug(); loadScheduledState(); loadSources();
+}
+
+// Restore active tab from URL hash so a reload keeps the current view
+var initTab = location.hash.slice(1);
+if (TAB_NAMES.indexOf(initTab) >= 0) showTab(initTab);
+window.addEventListener('hashchange', function() {
+  var t = location.hash.slice(1);
+  if (TAB_NAMES.indexOf(t) >= 0) showTab(t);
+});
+
+refreshAll();
+setInterval(refreshAll, 5*60*1000);
 </script>
 </body>
 </html>`

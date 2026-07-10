@@ -1,7 +1,8 @@
 sources:
   - type: trakt
     client_id: "YOUR_TRAKT_CLIENT_ID"
-    client_secret: "YOUR_TRAKT_CLIENT_SECRET"
+    # client_secret is optional — only the client_id is needed for public watchlists
+    # client_secret: "YOUR_TRAKT_CLIENT_SECRET"
     username: "YOUR_TRAKT_USERNAME"
 
   # --- IMDb Public Lists ---
