@@ -18,7 +18,7 @@ It resolves localized titles, skips items already in your library, and schedules
 - Resolves titles through TMDB for your preferred language.
 - Matches against TVHeadend, Plex DVR, or Jellyfin Live TV.
 - Keeps runs idempotent with Redis-backed state.
-- Shows progress in a read-only web dashboard and can send ntfy notifications.
+- Shows progress in a web dashboard (watchlist status, upcoming recordings, run history, cache debug tools) and can send ntfy notifications.
 
 ## How it works
 

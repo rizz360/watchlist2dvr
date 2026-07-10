@@ -8,19 +8,20 @@ Thanks for your interest in contributing!
 
 ```
 src/
-├── sources/          # WatchlistSource interface + Trakt, IMDb CSV, IMDb auto-download, TMDB lists adapters
+├── sources/          # WatchlistSource interface + Trakt, IMDb CSV, IMDb auto-download, IMDb public lists, TMDB lists adapters
 ├── library/          # LibraryChecker interface + Plex, Jellyfin adapters
 ├── resolvers/        # TMDB localization resolver (Redis-cached)
 ├── matching/
 │   ├── normalizer.ts # Deterministic title normalization pipeline
 │   └── engine.ts     # Matching logic + fuzzy fallback
-├── epg/              # EpgProvider interface + TVHeadend, Plex adapters
-├── dvr/              # DvrAdapter interface + TVHeadend, Plex adapters
+├── epg/              # EpgProvider interface + TVHeadend, Plex, Jellyfin adapters
+├── dvr/              # DvrAdapter interface + TVHeadend, Plex, Jellyfin adapters
+├── notifications/    # Notifier interface + ntfy adapter
 ├── state/
 │   ├── redis.ts      # Idempotency state store
 │   └── history.ts    # Run history (persisted in Redis)
 ├── web/
-│   └── server.ts     # Express read-only dashboard
+│   └── server.ts     # Express dashboard (JSON API + server-rendered UI)
 ├── config.ts         # Config schema (zod) + loader
 └── scheduler.ts      # Main orchestration loop
 ```
@@ -39,7 +40,11 @@ npm run typecheck    # tsc --noEmit
 npm run lint         # eslint
 ```
 
-Tests cover the normalization pipeline and matching engine. All tests run in under 400ms with no network calls.
+Tests cover the normalization pipeline, matching engine, TVHeadend adapters, and IMDb public-list parsing. All tests run in a few seconds with no network calls — keep it that way (use fixture HTML/JSON for scraping-related tests).
+
+### Working on the dashboard
+
+The web UI in `src/web/server.ts` is a single server-rendered template literal (HTML + CSS + client JS, no frontend build step). The embedded client JS therefore cannot use backticks or `${}` — use string concatenation, and route all interpolated data through the `esc()` helper. See `CLAUDE.md` for the full list of gotchas (it's written for AI coding agents but applies to humans too).
 
 ### Local Redis
 
