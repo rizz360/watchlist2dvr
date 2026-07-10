@@ -133,13 +133,15 @@ export function startWebServer(deps: WebDeps, port: number): void {
             year: u.year,
           })),
         ]
-        const items = await Promise.all(
-          rawItems.map(async (item) => {
-            const cached = await deps.redis.get(`tmdb:rating:${item.imdbId}`)
-            const tmdbRating = cached && cached !== "NOT_FOUND" ? parseFloat(cached) : null
-            return { ...item, tmdbRating }
-          }),
-        )
+        // Batch rating lookups into a single MGET instead of one GET per item
+        const ratings = rawItems.length
+          ? await deps.redis.mget(rawItems.map((item) => `tmdb:rating:${item.imdbId}`))
+          : []
+        const items = rawItems.map((item, i) => {
+          const cached = ratings[i]
+          const tmdbRating = cached && cached !== "NOT_FOUND" ? parseFloat(cached) : null
+          return { ...item, tmdbRating }
+        })
         res.json({ items })
       })
       .catch((err: Error) => res.status(500).json({ error: err.message }))
@@ -249,7 +251,9 @@ export function startWebServer(deps: WebDeps, port: number): void {
       if (cfg.type === "imdb_csv") return { type: "imdb_csv", path: cfg.path, minRating: cfg.min_rating }
       if (cfg.type === "imdb_public_lists") return { type: "imdb_public_lists", lists: cfg.lists }
       if (cfg.type === "tmdb_lists") return { type: "tmdb_lists", lists: cfg.lists, pages: cfg.pages }
-      return cfg
+      // Fallback for future source types: expose only the type, never the raw
+      // config (which may contain cookies or API keys).
+      return { type: (cfg as { type: string }).type }
     })
     res.json({ sources })
   })
@@ -328,6 +332,7 @@ tr:hover td{background:#1a1a30}
 .badge-ambiguous{background:#2a2a1a;color:#fbbf24}
 .badge-library{background:#162a1e;color:#4ade80}
 .badge-noepg{background:#1e1e2a;color:#6b6b8a}
+.badge-dryrun{background:#3a2a12;color:#fbbf24}
 .badge-rating{background:#2e1e0a;color:#fbbf24}
 .sec{font-size:.8rem;font-weight:600;color:#8888aa;text-transform:uppercase;letter-spacing:.08em;margin:1.5rem 0 .6rem}
 .empty{color:#4a4a6a;font-size:.88rem;padding:2.5rem 0;text-align:center}
@@ -426,7 +431,6 @@ a:hover{text-decoration:underline}
   min_rating: 1             # skip rated movies below this score (1&ndash;10)</div>
       <p style="margin-top:.9rem;font-size:.79rem;color:#6b6b8a">The cookie expires when you log out of IMDb. If fetching stops working, re-copy the <code>at-main</code> value from DevTools, update <code>config.yaml</code>, and restart.</p>
     </div>
-  </div>
   </div>
 </main>
 <script>
@@ -551,44 +555,6 @@ function renderWatchlist() {
   document.getElementById('wl-content').innerHTML = html;
 }
 
-function renderLists() {
-  var el = document.getElementById('lists-content');
-  if (!wlAllItems.length) {
-    el.innerHTML = '<p class="empty">No data yet &mdash; run the scheduler to populate.</p>';
-    return;
-  }
-  // Group items by listLabel (undefined → "Unknown")
-  var groups = {};
-  var groupOrder = [];
-  wlAllItems.forEach(function(item) {
-    var label = item.listLabel || 'Unknown';
-    if (!groups[label]) { groups[label] = []; groupOrder.push(label); }
-    groups[label].push(item);
-  });
-  var html = '';
-  groupOrder.forEach(function(label) {
-    var items = groups[label];
-    var counts = {matched:0,in_library:0,already_scheduled:0,ambiguous:0,unmatched:0};
-    items.forEach(function(i){ if(counts[i.status]!==undefined) counts[i.status]++; });
-    html += '<div style="margin-bottom:2.5rem">';
-    html += '<div style="display:flex;align-items:baseline;gap:1rem;margin-bottom:.8rem">';
-    html += '<h2 style="font-size:1rem;font-weight:600;color:#a78bfa">'+esc(label)+'</h2>';
-    html += '<span style="font-size:.78rem;color:#6b6b8a">'+items.length+' items &mdash; ';
-    var parts = [];
-    if(counts.matched) parts.push('<span style="color:#60a5fa">'+counts.matched+' matched</span>');
-    if(counts.in_library) parts.push('<span style="color:#4ade80">'+counts.in_library+' in library</span>');
-    if(counts.already_scheduled) parts.push('<span style="color:#60a5fa">'+counts.already_scheduled+' scheduled</span>');
-    if(counts.ambiguous) parts.push('<span style="color:#fbbf24">'+counts.ambiguous+' ambiguous</span>');
-    if(counts.unmatched) parts.push('<span style="color:#6b6b8a">'+counts.unmatched+' no EPG</span>');
-    html += parts.join(', ')+'</span>';
-    html += '</div>';
-    html += '<table><thead><tr><th>Title</th><th>Rating</th><th>Status</th><th>EPG / Channel</th><th>Airtime</th></tr></thead><tbody>';
-    items.forEach(function(item) { html += itemRow(item); });
-    html += '</tbody></table></div>';
-  });
-  el.innerHTML = html;
-}
-
 function loadWatchlist() {
   fetch('/api/watchlist').then(function(r){return r.json()}).then(function(data) {
     var items = data.items || [];
@@ -611,7 +577,9 @@ function loadWatchlist() {
     }
     var order = {matched:0,ambiguous:1,unmatched:2,in_library:3,already_scheduled:4};
     items.sort(function(a,b){
-      return (order[a.status]||99)-(order[b.status]||99) || a.originalTitle.localeCompare(b.originalTitle);
+      var ra = order[a.status] !== undefined ? order[a.status] : 99;
+      var rb = order[b.status] !== undefined ? order[b.status] : 99;
+      return ra-rb || a.originalTitle.localeCompare(b.originalTitle);
     });
     wlAllItems = items;
     buildListFilterBar(items);
