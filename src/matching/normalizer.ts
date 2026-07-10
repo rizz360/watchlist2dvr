@@ -97,5 +97,5 @@ export function extractYear(text: string): number | undefined {
  * Many EPG providers (e.g. XMLTV guide.xml) append the release year to the title.
  */
 export function stripYearSuffix(title: string): string {
-  return title.replace(/\s*[(\[](?:19|20)\d{2}[)\]]\s*$/, "").trim()
+  return title.replace(/\s*[([](?:19|20)\d{2}[)\]]\s*$/, "").trim()
 }

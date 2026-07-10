@@ -42,6 +42,6 @@ export class NtfyNotifier implements Notifier {
       headers.Authorization = `Bearer ${this.token}`
     }
 
-    await axios.post(this.url, body, { headers })
+    await axios.post(this.url, body, { headers, timeout: 10_000 })
   }
 }

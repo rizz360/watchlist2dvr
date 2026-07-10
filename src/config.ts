@@ -5,7 +5,8 @@ import yaml from "js-yaml"
 const TraktSourceSchema = z.object({
   type: z.literal("trakt"),
   client_id: z.string().min(1),
-  client_secret: z.string().min(1),
+  /** Not currently used (public-watchlist access only needs the client_id); accepted for forward compatibility with OAuth. */
+  client_secret: z.string().min(1).optional(),
   username: z.string().min(1),
 })
 

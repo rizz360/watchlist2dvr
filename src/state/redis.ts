@@ -16,15 +16,6 @@ export class StateStore {
     await this.redis.set(`state:scheduled:${imdbId}`, "1", "EX", SCHEDULED_TTL)
   }
 
-  async isSkipped(imdbId: string): Promise<boolean> {
-    const val = await this.redis.get(`state:skipped:${imdbId}`)
-    return val !== null
-  }
-
-  async markSkipped(imdbId: string, reason: string): Promise<void> {
-    await this.redis.set(`state:skipped:${imdbId}`, reason, "EX", SCHEDULED_TTL)
-  }
-
   /** Persist the watchlist items for a source so they can be used if the next fetch fails. */
   async saveSourceCache(sourceId: string, items: WatchlistItem[]): Promise<void> {
     const key = `watchlist-cache:${sourceId}`
