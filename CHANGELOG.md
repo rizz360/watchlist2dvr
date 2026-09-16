@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.1](https://github.com/rizz360/watchlist2dvr/compare/v0.6.0...v0.6.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* **tmdb:** fetch all pages of custom TMDB lists ([516bd20](https://github.com/rizz360/watchlist2dvr/commit/516bd2031e318de09326b68615b08e0997b37476))
+* **tmdb:** fetch all pages of custom TMDB lists ([c8c1fbf](https://github.com/rizz360/watchlist2dvr/commit/c8c1fbfc64d82966379fba5a8b332010a1876de2))
+
 ## [0.6.0](https://github.com/rizz360/watchlist2dvr/compare/v0.5.0...v0.6.0) (2026-07-10)
 
 
