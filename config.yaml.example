@@ -81,7 +81,7 @@ sources:
   #   lists:
   #     - "collection:9485"    # Fast & Furious
   #     - "collection:645"     # James Bond (007)
-  #     - "collection:131296"  # John Wick
+  #     - "collection:404609"  # John Wick
   #     - "list:12345"         # any public TMDB custom list
   #     - "top_rated"          # TMDB top-rated movies  (see `pages`)
   #     - "popular"            # TMDB popular right now (see `pages`)
