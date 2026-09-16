@@ -107,22 +107,28 @@ export class TmdbListsSource implements WatchlistSource {
     }
   }
 
+  // Custom lists are paginated (20 items/page). Unlike the named endpoints,
+  // a curated list is fetched in full — `pages` only bounds popular/top_rated/etc.
   private async fetchTmdbList(id: string): Promise<{ movies: TmdbMovieStub[]; label: string }> {
-    const res = await axios.get<{
-      name: string
-      items: Array<TmdbMovieStub & { media_type?: string }>
-    }>(`${TMDB_BASE}/list/${id}`, {
-      params: { api_key: this.apiKey },
-      httpsAgent: ipv4Agent,
-      timeout: 10_000,
-    })
-    const movies = (res.data.items ?? []).filter(
-      (i) => !i.media_type || i.media_type === "movie",
-    )
-    return {
-      movies,
-      label: res.data.name || `TMDB List ${id}`,
+    const movies: TmdbMovieStub[] = []
+    let label = `TMDB List ${id}`
+    for (let page = 1; ; page++) {
+      const res = await axios.get<{
+        name: string
+        items: Array<TmdbMovieStub & { media_type?: string }>
+        total_pages?: number
+      }>(`${TMDB_BASE}/list/${id}`, {
+        params: { api_key: this.apiKey, page },
+        httpsAgent: ipv4Agent,
+        timeout: 10_000,
+      })
+      if (res.data.name) label = res.data.name
+      movies.push(
+        ...(res.data.items ?? []).filter((i) => !i.media_type || i.media_type === "movie"),
+      )
+      if (page >= (res.data.total_pages ?? 1)) break
     }
+    return { movies, label }
   }
 
   private async fetchNamed(name: NamedEndpoint): Promise<{ movies: TmdbMovieStub[]; label: string }> {
